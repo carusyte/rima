@@ -8,6 +8,11 @@ import (
 	"github.com/chrislusf/gleam/flow"
 	"github.com/chrislusf/gleam/gio"
 	"github.com/chrislusf/gleam/plugins/file"
+	"errors"
+	"net"
+	"net/http"
+	"net/rpc"
+	"log"
 )
 
 var (
@@ -17,11 +22,44 @@ var (
 	Sum           = gio.RegisterReducer(sum)
 )
 
+type Args struct {
+	A, B int
+}
+
+type Quotient struct {
+	Quo, Rem int
+}
+
+type Arith int
+
+func (t *Arith) Multiply(args *Args, reply *int) error {
+	*reply = args.A * args.B
+	return nil
+}
+
+func (t *Arith) Divide(args *Args, quo *Quotient) error {
+	if args.B == 0 {
+		return errors.New("divide by zero")
+	}
+	quo.Quo = args.A / args.B
+	quo.Rem = args.A % args.B
+	return nil
+}
+
 func main() {
+	arith := new(Arith)
+	rpc.Register(arith)
+	rpc.HandleHTTP()
+	l, e := net.Listen("tcp", ":45321")
+	if e != nil {
+		log.Fatal("listen error:", e)
+	}
+	go http.Serve(l, nil)
+}
 
-	gio.Init()   // If the command line invokes the mapper or reducer, execute it and exit.
-	flag.Parse() // optional, since gio.Init() will call this also.
-
+func testGleam(){
+	gio.Init() // If the command line invokes the mapper or reducer, execute it and exit.
+	//flag.Parse() // optional, since gio.Init() will call this also.
 	f := flow.New("top5 words in passwd").
 		Read(file.Txt("/etc/passwd", 2)). // read a txt file and partitioned to 2 shards
 		Map("tokenize", Tokenize). // invoke the registered "tokenize" mapper function.
@@ -36,7 +74,6 @@ func main() {
 	} else {
 		f.Run()
 	}
-
 }
 
 func tokenize(row []interface{}) error {
