@@ -54,7 +54,7 @@ func main() {
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
-	go http.Serve(l, nil)
+	http.Serve(l, nil)
 }
 
 func testGleam(){
