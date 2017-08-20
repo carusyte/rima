@@ -22,7 +22,7 @@ func TestClient(t *testing.T) {
 	if err != nil {
 		log.Fatal("arith error:", err)
 	}
-	fmt.Printf("Arith: %d*%d=%d", args.A, args.B, reply)
+	fmt.Printf("Arith: %d*%d=%d\n", args.A, args.B, reply)
 
 	// Asynchronous call
 	quotient := new(Quotient)
@@ -32,6 +32,6 @@ func TestClient(t *testing.T) {
 	if replyCall.Error != nil {
 		log.Fatal("arith error:", err)
 	}
-	q := replyCall.Reply.(Quotient)
+	q := replyCall.Reply.(*Quotient)
 	fmt.Printf("Arith: %d/%d=%d, %d", args.A, args.B, q.Quo, q.Rem)
 }

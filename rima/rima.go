@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"log"
+	"github.com/carusyte/rima/rsec"
 )
 
 var (
@@ -47,8 +48,10 @@ func (t *Arith) Divide(args *Args, quo *Quotient) error {
 }
 
 func main() {
-	arith := new(Arith)
-	rpc.Register(arith)
+	gio.Init() // If the command line invokes the mapper or reducer, execute it and exit.
+
+	scorer := new(rsec.IndcScorer)
+	rpc.Register(scorer)
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", ":45321")
 	if e != nil {
@@ -57,7 +60,7 @@ func main() {
 	http.Serve(l, nil)
 }
 
-func testGleam(){
+func testGleam() {
 	gio.Init() // If the command line invokes the mapper or reducer, execute it and exit.
 	//flag.Parse() // optional, since gio.Init() will call this also.
 	f := flow.New("top5 words in passwd").
