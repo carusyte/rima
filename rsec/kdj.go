@@ -119,7 +119,7 @@ func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 
 func kdjScoreMapper(row []interface{}) error {
 	s := 0.
-	in := row[0].(*KdjScoreCalcInput)
+	in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
 	sdy, e := calcKdjScore(in.KdjDy, in.BuyDy, in.SellDy)
 	if e != nil {
 		return e
