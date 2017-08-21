@@ -10,6 +10,8 @@ import (
 	"github.com/chrislusf/gleam/gio"
 	"github.com/montanaflynn/stats"
 	"github.com/pkg/errors"
+	"log"
+	"reflect"
 )
 
 var (
@@ -48,16 +50,19 @@ type KdjScore struct {
 }
 
 func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply *bool) error {
+	log.Printf("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
 	lock.Lock()
 	defer lock.Unlock()
 	kdjFdMap = *fdMap
 	*reply = true
+	log.Printf("IndcScorer.InitKdjFeatDat finished. fdmap size: %d", len(kdjFdMap))
 	return nil
 }
 
 //Score by assessing the historical data against the sampled feature data.
 func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	//call gleam api to map and reduce
+	log.Printf("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
 	shard := 4.0
 	shard, e := stats.Round(math.Pow(math.Log(float64(len(req.Data))), math.SqrtPi), 0)
@@ -66,6 +71,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	}
 	rep = new(KdjScoreRep)
 	f := flow.New("kdj score calculation").Slices(mapSource).Partition("partition", int(shard)).
+		// TODO try to use Lua script instead, load Lua using dotsql at the moment
 		Map("kdjScorer", KdjScorer). // invoke the registered "kdjScorer" mapper function.
 		ReduceBy("kdjScoreCollector", KdjScoreCollector). // invoke the registered "kdjScoreCollector" reducer function.
 		SaveFirstRowTo(&rep.Scores)
@@ -75,7 +81,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	} else {
 		f.Run()
 	}
-
+	log.Printf("IndcScorer.ScoreKdj finished, score size: %d", len(rep.Scores))
 	return nil
 }
 
@@ -84,11 +90,15 @@ func getKdjMapSource(req *KdjScoreReq) [][]interface{} {
 	for i, ks := range req.Data {
 		r[i] = make([]interface{}, 1)
 		in := new(KdjScoreCalcInput)
+		// TODO no entity dto needed, use combination of slice and map instead
 		r[i][0] = in
 		in.KdjSeries = ks
 		in.BuyDy, in.SellDy = getKDJfdViews(model.DAY, len(in.KdjDy))
 		in.BuyWk, in.SellWk = getKDJfdViews(model.WEEK, len(in.KdjWk))
 		in.BuyMo, in.SellMo = getKDJfdViews(model.MONTH, len(in.KdjMo))
+		in.WgtDay = req.WgtDay
+		in.WgtWeek = req.WgtWeek
+		in.WgtMonth = req.WgtMonth
 	}
 	return r
 }
@@ -118,7 +128,35 @@ func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 }
 
 func kdjScoreMapper(row []interface{}) error {
-	s := 0.
+	s := .0
+	//FIXME figure out the format of row
+	log.Printf("kdjScoreMapper param type: %+v, row len: %d", reflect.TypeOf(row), len(row))
+	for i, ie := range row {
+		log.Printf("row[%d] type: %+v", i, reflect.TypeOf(ie))
+		switch row[i].(type) {
+		case []interface{}:
+			a := row[i].([]interface{})
+			log.Printf("row[%d] is type []interface{}, size: %d, iterating the array:", i, len(a))
+			for j, ia := range a {
+				log.Printf("a[%d] is type %+v", j, reflect.TypeOf(ia))
+				// more to be explored...
+				switch ia.(type) {
+				case map[interface{}]interface{}:
+					m := ia.(map[interface{}]interface{})
+					log.Printf("a[%d] map size: %d, iterating the map:", j, len(m))
+					for k, v := range m {
+						log.Printf("k: %+v\tv: %+v", k, v)
+					}
+				}
+			}
+		case map[interface{}]interface{}:
+			m := row[i].(map[interface{}]interface{})
+			log.Printf("row[%d] map size: %d, iterating the map:", i, len(m))
+			for k, v := range m {
+				log.Printf("k: %+v\tv: %+v", k, v)
+			}
+		}
+	}
 	in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
 	sdy, e := calcKdjScore(in.KdjDy, in.BuyDy, in.SellDy)
 	if e != nil {
