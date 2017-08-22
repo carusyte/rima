@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"log"
 	"reflect"
+	"github.com/chrislusf/gleam/util"
 )
 
 var (
@@ -69,12 +70,16 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	if e != nil {
 		return e
 	}
-	rep = new(KdjScoreRep)
-	f := flow.New("kdj score calculation").Slices(mapSource).Partition("partition", int(shard)).
-		// TODO try to use Lua script instead, load Lua using dotsql at the moment
+	rep.Scores = make([]float64, len(req.Data))
+	f := flow.New("KDJ Score Calculation").Slices(mapSource).Partition("partition", int(shard)).
 		Map("kdjScorer", KdjScorer). // invoke the registered "kdjScorer" mapper function.
 		ReduceBy("kdjScoreCollector", KdjScoreCollector). // invoke the registered "kdjScoreCollector" reducer function.
-		SaveFirstRowTo(&rep.Scores)
+		OutputRow(func(r *util.Row) error {
+		for i,v := range r.V[0].([]interface{}){
+			rep.Scores[i] = v.(float64)
+		}
+		return nil
+	})
 
 	if len(req.Data) >= 4 {
 		f.Run(distributed.Option())
@@ -89,28 +94,77 @@ func getKdjMapSource(req *KdjScoreReq) [][]interface{} {
 	r := make([][]interface{}, len(req.Data))
 	for i, ks := range req.Data {
 		r[i] = make([]interface{}, 1)
-		in := new(KdjScoreCalcInput)
 		// TODO no entity dto needed, use combination of slice and map instead
-		r[i][0] = in
-		in.KdjSeries = ks
-		in.BuyDy, in.SellDy = getKDJfdViews(model.DAY, len(in.KdjDy))
-		in.BuyWk, in.SellWk = getKDJfdViews(model.WEEK, len(in.KdjWk))
-		in.BuyMo, in.SellMo = getKDJfdViews(model.MONTH, len(in.KdjMo))
-		in.WgtDay = req.WgtDay
-		in.WgtWeek = req.WgtWeek
-		in.WgtMonth = req.WgtMonth
+		m := make(map[string]interface{})
+		r[i][0] = m
+		m["WgtDay"] = req.WgtDay
+		m["WgtWeek"] = req.WgtWeek
+		m["WgtMonth"] = req.WgtMonth
+		m["KdjDay"], m["KdjWeek"], m["KdjMonth"] = cvtKdjSeries(ks)
+		m["BuyDay"], m["SellDay"] = getKDJfdMaps(model.DAY, len(ks.KdjDy))
+		m["BuyWeek"], m["SellWeek"] = getKDJfdMaps(model.WEEK, len(ks.KdjWk))
+		m["BuyMonth"], m["SellMonth"] = getKDJfdMaps(model.MONTH, len(ks.KdjMo))
 	}
 	return r
 }
 
-func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView) {
-	buy = make([]*model.KDJfdView, 0, 1024)
-	sell = make([]*model.KDJfdView, 0, 1024)
+func cvtKdjSeries(ks *KdjSeries) (day, week, month map[string][]float64) {
+	day = make(map[string][]float64)
+	day["K"] = make([]float64, len(ks.KdjDy))
+	day["D"] = make([]float64, len(ks.KdjDy))
+	day["J"] = make([]float64, len(ks.KdjDy))
+	for i, d := range ks.KdjDy {
+		day["K"][i] = d.KDJ_K
+		day["D"][i] = d.KDJ_D
+		day["J"][i] = d.KDJ_J
+	}
+
+	week = make(map[string][]float64)
+	week["K"] = make([]float64, len(ks.KdjWk))
+	week["D"] = make([]float64, len(ks.KdjWk))
+	week["J"] = make([]float64, len(ks.KdjWk))
+	for i, d := range ks.KdjWk {
+		week["K"][i] = d.KDJ_K
+		week["D"][i] = d.KDJ_D
+		week["J"][i] = d.KDJ_J
+	}
+
+	month = make(map[string][]float64)
+	month["K"] = make([]float64, len(ks.KdjMo))
+	month["D"] = make([]float64, len(ks.KdjMo))
+	month["J"] = make([]float64, len(ks.KdjMo))
+	for i, d := range ks.KdjMo {
+		month["K"][i] = d.KDJ_K
+		month["D"][i] = d.KDJ_D
+		month["J"][i] = d.KDJ_J
+	}
+	return
+}
+
+func getKDJfdMaps(cytp model.CYTP, len int) (buy, sell []map[string]interface{}) {
+	buy = make([]map[string]interface{}, 0, 1024)
+	sell = make([]map[string]interface{}, 0, 1024)
 	for i := -2; i < 3; i++ {
 		n := len + i
 		if n >= 2 {
-			buy = append(buy, GetKdjFeatDat(cytp, "BY", n)...)
-			sell = append(sell, GetKdjFeatDat(cytp, "SL", n)...)
+			buyViews := GetKdjFeatDat(cytp, "BY", n)
+			sellViews := GetKdjFeatDat(cytp, "SL", n)
+			for _, v := range buyViews {
+				m := make(map[string]interface{})
+				m["Weight"] = v.Weight
+				m["K"] = v.K
+				m["D"] = v.D
+				m["J"] = v.J
+				buy = append(buy, m)
+			}
+			for _, v := range sellViews {
+				m := make(map[string]interface{})
+				m["Weight"] = v.Weight
+				m["K"] = v.K
+				m["D"] = v.D
+				m["J"] = v.J
+				sell = append(sell, m)
+			}
 		}
 	}
 	return
@@ -129,13 +183,49 @@ func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 
 func kdjScoreMapper(row []interface{}) error {
 	s := .0
-	//FIXME figure out the format of row
+	//interpRow(row)
+	m := row[0].([]interface{})[0].(map[interface{}]interface{})
+	//in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
+	sdy, e := calcKdjScore(m["KdjDay"].(map[interface{}]interface{}), m["BuyDay"].([]interface{}),
+		m["SellDay"].([]interface{}))
+	if e != nil {
+		return e
+	}
+	swk, e := calcKdjScore(m["KdjWeek"].(map[interface{}]interface{}), m["BuyWeek"].([]interface{}),
+		m["SellWeek"].([]interface{}))
+	if e != nil {
+		return e
+	}
+	smo, e := calcKdjScore(m["KdjMonth"].(map[interface{}]interface{}), m["BuyMonth"].([]interface{}),
+		m["SellMonth"].([]interface{}))
+	if e != nil {
+		return e
+	}
+	wgtDay := gio.ToFloat64(m["WgtDay"])
+	wgtWeek := gio.ToFloat64(m["WgtWeek"])
+	wgtMonth := gio.ToFloat64(m["WgtMonth"])
+	s += sdy * wgtDay
+	s += swk * wgtWeek
+	s += smo * wgtMonth
+	s /= wgtDay + wgtWeek + wgtMonth
+	s = math.Min(100, math.Max(0, s))
+
+	//gio.Emit([]float64{s})
+	//gio.Emit(s)
+	//TODO test only
+	gio.Emit("KDJS", 2.13)
+
+	return nil
+}
+
+//figure out the format of row
+func interpRow(row []interface{}) {
 	log.Printf("kdjScoreMapper param type: %+v, row len: %d", reflect.TypeOf(row), len(row))
 	for i, ie := range row {
-		log.Printf("row[%d] type: %+v", i, reflect.TypeOf(ie))
-		switch row[i].(type) {
+		log.Printf("row[%d] type: %+v, value: %+v", i, reflect.TypeOf(ie), ie)
+		switch ie.(type) {
 		case []interface{}:
-			a := row[i].([]interface{})
+			a := ie.([]interface{})
 			log.Printf("row[%d] is type []interface{}, size: %d, iterating the array:", i, len(a))
 			for j, ia := range a {
 				log.Printf("a[%d] is type %+v", j, reflect.TypeOf(ia))
@@ -145,43 +235,48 @@ func kdjScoreMapper(row []interface{}) error {
 					m := ia.(map[interface{}]interface{})
 					log.Printf("a[%d] map size: %d, iterating the map:", j, len(m))
 					for k, v := range m {
-						log.Printf("k: %+v\tv: %+v", k, v)
+						log.Printf("k: %+v (%+v)\tv: %+v (%+v)", k, reflect.TypeOf(k), v, reflect.TypeOf(v))
 					}
 				}
 			}
 		case map[interface{}]interface{}:
-			m := row[i].(map[interface{}]interface{})
+			m := ie.(map[interface{}]interface{})
 			log.Printf("row[%d] map size: %d, iterating the map:", i, len(m))
 			for k, v := range m {
 				log.Printf("k: %+v\tv: %+v", k, v)
 			}
 		}
 	}
-	in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
-	sdy, e := calcKdjScore(in.KdjDy, in.BuyDy, in.SellDy)
-	if e != nil {
-		return e
-	}
-	swk, e := calcKdjScore(in.KdjWk, in.BuyWk, in.SellWk)
-	if e != nil {
-		return e
-	}
-	smo, e := calcKdjScore(in.KdjMo, in.BuyMo, in.SellMo)
-	if e != nil {
-		return e
-	}
-	s += sdy * in.WgtDay
-	s += swk * in.WgtWeek
-	s += smo * in.WgtMonth
-	s /= in.WgtDay + in.WgtWeek + in.WgtMonth
-	s = math.Min(100, math.Max(0, s))
-
-	gio.Emit([]float64{s})
-
-	return nil
 }
 
-func calcKdjScore(kdj []*model.Indicator, buyfds []*model.KDJfdView, sellfds []*model.KDJfdView) (s float64, e error) {
+func interpIntf(id string, intf interface{}) {
+	log.Printf("%s intf type: %+v,  value: %+v", id, reflect.TypeOf(intf), intf)
+	switch intf.(type) {
+	case []interface{}:
+		a := intf.([]interface{})
+		log.Printf("%s intf is type []interface{}, size: %d, iterating the array:", id, len(a))
+		for j, ia := range a {
+			log.Printf("%s[%d] is type %+v", id, j, reflect.TypeOf(ia))
+			// more to be explored...
+			switch ia.(type) {
+			case map[interface{}]interface{}:
+				m := ia.(map[interface{}]interface{})
+				log.Printf("%s[%d] map size: %d, iterating the map:", id, j, len(m))
+				for k, v := range m {
+					log.Printf("%s,  k: %+v (%+v)\tv: %+v (%+v)", id, k, reflect.TypeOf(k), v, reflect.TypeOf(v))
+				}
+			}
+		}
+	case map[interface{}]interface{}:
+		m := intf.(map[interface{}]interface{})
+		log.Printf("%s intf map size: %d, iterating the map:", id, len(m))
+		for k, v := range m {
+			log.Printf("%s, k: %+v\tv: %+v", id, k, v)
+		}
+	}
+}
+
+func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []interface{}) (s float64, e error) {
 	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
 	if e != nil {
@@ -214,43 +309,45 @@ func calcKdjScore(kdj []*model.Indicator, buyfds []*model.KDJfdView, sellfds []*
 }
 
 func kdjScoreReducer(x, y interface{}) (interface{}, error) {
-	xs := x.([]float64)
-	ys := y.([]float64)
-	return append(xs, ys...), nil
+	//interpIntf("x", x)
+	//interpIntf("y", y)
+	var r []interface{}
+	switch x.(type) {
+	case float64:
+		r = make([]interface{}, 1)
+		r[0] = x
+	case []interface{}:
+		r = x.([]interface{})
+	}
+	r = append(r, y)
+	return r, nil
 }
 
 // Evaluates KDJ DEVIA indicator against pruned feature data, returns the following result:
 // Ratio of high DEVIA, ratio of positive DEVIA, mean of positive DEVIA, and DEVIA indicator, ranging from 0 to 1
-func calcKdjDI(hist []*model.Indicator, fdvs []*model.KDJfdView) (hdr, pdr, mpd, di float64, e error) {
+func calcKdjDI(hist map[interface{}]interface{}, fdvs []interface{}) (hdr, pdr, mpd, di float64, e error) {
 	if len(hist) == 0 {
 		return 0, 0, 0, 0, nil
 	}
-	code := hist[0].Code
-	hk := make([]float64, len(hist))
-	hd := make([]float64, len(hist))
-	hj := make([]float64, len(hist))
-	for i, h := range hist {
-		hk[i] = h.KDJ_K
-		hd[i] = h.KDJ_D
-		hj[i] = h.KDJ_J
-	}
 	pds := make([]float64, 0, 16)
-	for _, fd := range fdvs {
-		bkd, e := bestKdjDevi(hk, hd, hj, fd.K, fd.D, fd.J)
+	for _, fdi := range fdvs {
+		fd := fdi.(map[interface{}]interface{})
+		wgt := gio.ToFloat64(fd["Weight"])
+		bkd, e := bestKdjDevi(hist["K"], hist["D"], hist["J"], fd["K"], fd["D"], fd["J"])
 		if e != nil {
 			return 0, 0, 0, 0, e
 		}
 		if bkd >= 0 {
 			pds = append(pds, bkd)
-			pdr += fd.Weight
+			pdr += wgt
 			if bkd >= 0.8 {
-				hdr += fd.Weight
+				hdr += wgt
 			}
 		}
 	}
 	if len(pds) > 0 {
 		mpd, e = stats.Mean(pds)
-		e = errors.Wrapf(e, "%s failed to calculate mean of positive devia", code)
+		e = errors.Wrap(e, "failed to calculate mean of positive devia")
 		return 0, 0, 0, 0, e
 	}
 	di = 0.5 * math.Min(1, math.Pow(hdr+0.92, 50))
@@ -263,8 +360,14 @@ func calcKdjDI(hist []*model.Indicator, fdvs []*model.KDJfdView) (hdr, pdr, mpd,
 // Calculates the best match KDJ DEVIA, len(sk)==len(sd)==len(sj),
 // and len(sk) and len(tk) can vary.
 // DEVIA ranges from negative infinite to 1, with 1 indicating the most relevant KDJ data sets.
-func bestKdjDevi(sk, sd, sj, tk, td, tj []float64) (float64, error) {
+func bestKdjDevi(ski, sdi, sji, tki, tdi, tji interface{}) (float64, error) {
 	//should we also consider the len(x) to weigh the final result?
+	sk := ski.([]interface{})
+	sd := sdi.([]interface{})
+	sj := sji.([]interface{})
+	tk := tki.([]interface{})
+	td := tdi.([]interface{})
+	tj := tji.([]interface{})
 	dif := len(sk) - len(tk)
 	if dif > 0 {
 		cc := -100.0
@@ -298,7 +401,7 @@ func bestKdjDevi(sk, sd, sj, tk, td, tj []float64) (float64, error) {
 	}
 }
 
-func CalcKdjDevi(sk, sd, sj, tk, td, tj []float64) (float64, error) {
+func CalcKdjDevi(sk, sd, sj, tk, td, tj []interface{}) (float64, error) {
 	kcc, e := Devi(sk, tk)
 	if e != nil {
 		return 0, errors.New(fmt.Sprintf("failed to calculate kcc: %+v, %+v", sk, tk))
@@ -315,13 +418,13 @@ func CalcKdjDevi(sk, sd, sj, tk, td, tj []float64) (float64, error) {
 	return -0.001*math.Pow(scc, math.E) + 1, nil
 }
 
-func Devi(a, b []float64) (float64, error) {
+func Devi(a, b []interface{}) (float64, error) {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0, errors.New("invalid input")
 	}
 	s := .0
 	for i := 0; i < len(a); i++ {
-		s += math.Pow(a[i]-b[i], 2)
+		s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
 	}
 	return math.Pow(s/float64(len(a)), 0.5), nil
 }
