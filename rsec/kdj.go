@@ -75,7 +75,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 		Map("kdjScorer", KdjScorer). // invoke the registered "kdjScorer" mapper function.
 		ReduceBy("kdjScoreCollector", KdjScoreCollector). // invoke the registered "kdjScoreCollector" reducer function.
 		OutputRow(func(r *util.Row) error {
-		for i,v := range r.V[0].([]interface{}){
+		for i, v := range r.V[0].([]interface{}) {
 			rep.Scores[i] = v.(float64)
 		}
 		return nil
@@ -211,9 +211,8 @@ func kdjScoreMapper(row []interface{}) error {
 	s = math.Min(100, math.Max(0, s))
 
 	//gio.Emit([]float64{s})
-	//gio.Emit(s)
-	//TODO test only
-	gio.Emit("KDJS", 2.13)
+	gio.Emit("KDJS", s)
+	//gio.Emit("KDJS", 2.13)
 
 	return nil
 }
