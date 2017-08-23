@@ -70,10 +70,12 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	if e != nil {
 		return e
 	}
+	sortOption := flow.SortOption{}.By(1, true)
 	rep.Scores = make([]float64, len(req.Data))
-	f := flow.New("KDJ Score Calculation").Slices(mapSource).Partition("partition", int(shard)).
+	f := flow.New("KDJ Score Calculation").Slices(mapSource).Partition("partition",
+		int(shard), sortOption).
 		Map("kdjScorer", KdjScorer). // invoke the registered "kdjScorer" mapper function.
-		ReduceBy("kdjScoreCollector", KdjScoreCollector). // invoke the registered "kdjScoreCollector" reducer function.
+		ReduceBy("kdjScoreCollector", KdjScoreCollector, sortOption). // invoke the registered "kdjScoreCollector" reducer function.
 		OutputRow(func(r *util.Row) error {
 		for i, v := range r.V[0].([]interface{}) {
 			rep.Scores[i] = v.(float64)
