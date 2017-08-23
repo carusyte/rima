@@ -48,8 +48,11 @@ func (t *Arith) Divide(args *Args, quo *Quotient) error {
 
 func main() {
 	gio.Init() // If the command line invokes the mapper or reducer, execute it and exit.
-	scorer := new(rsec.IndcScorer)
-	rpc.Register(scorer)
+
+	//Register RPC services
+	rpc.Register(new(rsec.IndcScorer))
+	rpc.Register(new(rsec.DataSync))
+
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", ":45321")
 	if e != nil {
