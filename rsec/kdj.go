@@ -70,7 +70,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	if e != nil {
 		return e
 	}
-	sortOption := flow.SortOption{}.By(1, true)
+	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, len(req.Data))
 	f := flow.New("KDJ Score Calculation").Slices(mapSource).Partition("partition",
 		int(shard), sortOption).

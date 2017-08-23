@@ -64,12 +64,13 @@ func main() {
 
 func testGleam() {
 	gio.Init() // If the command line invokes the mapper or reducer, execute it and exit.
+	sortOption := (&flow.SortOption{}).By(1, true)
 	//flag.Parse() // optional, since gio.Init() will call this also.
 	f := flow.New("top5 words in passwd").
 		Read(file.Txt("/etc/passwd", 2)). // read a txt file and partitioned to 2 shards
 		Map("tokenize", Tokenize). // invoke the registered "tokenize" mapper function.
 		Map("appendOne", AppendOne). // invoke the registered "appendOne" mapper function.
-		ReduceBy("sum", Sum). // invoke the registered "sum" reducer function.
+		ReduceBy("sum", Sum, sortOption). // invoke the registered "sum" reducer function.
 		Sort("sortBySum", flow.OrderBy(2, true)).
 		Top("top5", 5, flow.OrderBy(2, false)).
 		Printlnf("%s\t%d")
