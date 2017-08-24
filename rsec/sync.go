@@ -42,13 +42,13 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 			valueArgs := make([]interface{}, 0, len(fdvs)*10)
 			dt, tm := util.TimeStr()
 			for i, f := range fdvs {
-				if i < len(fdvs)-1{
-					valueStrings = append(valueStrings, " SELECT :indc,:fid,:cytp,:bysl,:smpnum,:fdnum,:weight,"+
-						":remarks,:dt,:tm FROM dual UNION ALL ")
-				}else{
-					valueStrings = append(valueStrings, " SELECT :indc,:fid,:cytp,:bysl,:smpnum,:fdnum,:weight,"+
-						":remarks,:dt,:tm FROM dual")
+				valueString := fmt.Sprintf(" SELECT :indc%[1]d,:fid%[1]d,:cytp%[1]d,"+
+					":bysl%[1]d,:smpnum%[1]d,:fdnum%[1]d,:weight%[1]d,:remarks%[1]d,:dt%[1]d,:tm%[1]d "+
+					"FROM dual", i)
+				if i < len(fdvs)-1 {
+					valueString += " UNION ALL "
 				}
+				valueStrings = append(valueStrings, valueString)
 				valueArgs = append(valueArgs, f.Indc)
 				valueArgs = append(valueArgs, f.Fid)
 				valueArgs = append(valueArgs, f.Cytp)
@@ -80,11 +80,12 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				valueStrings = make([]string, 0, f.SmpNum)
 				valueArgs = make([]interface{}, 0, f.SmpNum*7)
 				for i := 0; i < f.SmpNum; i++ {
-					if i < len(fdvs)-1{
-						valueStrings = append(valueStrings, " SELECT :fid,:seq,:k,:d,:j,:dt,:tm FROM dual UNION ALL ")
-					}else{
-						valueStrings = append(valueStrings, " SELECT :fid,:seq,:k,:d,:j,:dt,:tm FROM dual")
+					valueString := fmt.Sprintf(" SELECT :fid%[1]d,:seq%[1]d,:k%[1]d,"+
+						":d%[1]d,:j%[1]d,:dt%[1]d,:tm%[1]d FROM dual", i)
+					if i < len(fdvs)-1 {
+						valueString += " UNION ALL "
 					}
+					valueStrings = append(valueStrings, valueString)
 					valueArgs = append(valueArgs, f.Fid)
 					valueArgs = append(valueArgs, i)
 					valueArgs = append(valueArgs, f.K[i])
