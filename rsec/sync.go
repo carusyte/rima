@@ -9,6 +9,7 @@ import (
 	"log"
 	"time"
 	"github.com/pkg/errors"
+	"math"
 )
 
 type DataSync struct{}
@@ -42,9 +43,13 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 	}
 	for k, fdvs := range fdMap {
 		log.Printf("Saving KDJ Feature Data, key: %s,  len: %d", k, len(fdvs))
-		e := bulkInsertFdvs(fdvs)
-		if e != nil {
-			return e
+		i := 0
+		for ; i < len(fdvs); i += 300 {
+			end := int(math.Min(float64(i+300),float64(len(fdvs))))
+			e := bulkInsertFdvs(fdvs[i:end])
+			if e != nil {
+				return e
+			}
 		}
 	}
 	*rep = true
@@ -85,13 +90,7 @@ func bulkInsertFdvs(fdvs []*model.KDJfdView) error {
 	stmt := fmt.Sprintf("INSERT INTO indc_feat (indc,fid,cytp,bysl,smp_num,fd_num,weight,remarks,"+
 		"udate,utime) WITH t AS (%s) SELECT * FROM t",
 		strings.Join(valueStrings, ""))
-	ps, e := tran.Prepare(stmt)
-	if e != nil {
-		tran.Rollback()
-		log.Println("failed to create indc_feat prepared statement", e)
-		return errors.Wrap(e, "failed to create indc_feat prepared statement")
-	}
-	_, err := ps.Exec(valueArgs...)
+	_, err := tran.Exec(stmt, valueArgs...)
 	if err != nil {
 		tran.Rollback()
 		log.Println("failed to bulk insert indc_feat", err)
@@ -119,13 +118,7 @@ func bulkInsertFdvs(fdvs []*model.KDJfdView) error {
 		stmt = fmt.Sprintf("INSERT INTO kdj_feat_dat (fid,seq,k,d,j,"+
 			"udate,utime) WITH t AS (%s) SELECT * FROM t",
 			strings.Join(valueStrings, ""))
-		ps, e := tran.Prepare(stmt)
-		if e != nil {
-			tran.Rollback()
-			log.Println("failed to create kdj_feat_dat prepared statement", e)
-			return errors.Wrap(e, "failed to create kdj_feat_dat prepared statement")
-		}
-		_, err := ps.Exec(valueArgs...)
+		_, err := tran.Exec(stmt, valueArgs...)
 		if err != nil {
 			tran.Rollback()
 			log.Println("failed to bulk insert kdj_feat_dat", err)
