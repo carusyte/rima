@@ -8,10 +8,18 @@ import (
 )
 
 var (
-	Ora *gorp.DbMap
+	ora    *gorp.DbMap
+	inited = false
 )
 
-func init() {
+func Ora() *gorp.DbMap {
+	if !inited {
+		initGorp()
+	}
+	return ora
+}
+
+func initGorp() {
 	db, err := sql.Open("ora", "rima/rima@10.16.53.30:1521/hundsun")
 	util.CheckErr(err, "sql.Open failed,")
 
@@ -23,5 +31,6 @@ func init() {
 
 	util.CheckErr(db.Ping(), "Failed to ping db,")
 
-	Ora = dbmap
+	ora = dbmap
+	inited = true
 }
