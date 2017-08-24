@@ -22,17 +22,17 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 	}()
 	tran, e := db.Ora().Begin()
 	if e != nil {
-		log.Println(e)
-		return errors.Wrap(e, "failed to begin new transaction")
+		log.Println("failed to start new transaction", e)
+		return errors.Wrap(e, "failed to start new transaction")
 	}
 	_, e = tran.Exec("truncate table indc_feat")
 	if e != nil {
-		log.Println(e)
+		log.Println("failed to truncate indc_feat", e)
 		return errors.Wrap(e, "failed to truncate indc_feat")
 	}
 	_, e = tran.Exec("truncate table kdj_feat_dat")
 	if e != nil {
-		log.Println(e)
+		log.Println("failed to truncate kdj_feat_dat", e)
 		return errors.Wrap(e, "failed to truncate kdj_feat_dat")
 	}
 	for k, fdvs := range fdMap {
@@ -66,13 +66,13 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 			ps, e := tran.Prepare(stmt)
 			if e != nil {
 				tran.Rollback()
-				log.Println(e)
+				log.Println("failed to create indc_feat prepared statement", e)
 				return errors.Wrap(e, "failed to create indc_feat prepared statement")
 			}
 			_, err := ps.Exec(valueArgs...)
 			if err != nil {
 				tran.Rollback()
-				log.Println(err)
+				log.Println("failed to bulk insert indc_feat", err)
 				return errors.Wrap(err, "failed to bulk insert indc_feat")
 			}
 
@@ -82,7 +82,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				for i := 0; i < f.SmpNum; i++ {
 					valueString := fmt.Sprintf(" SELECT :fid%[1]d,:seq%[1]d,:k%[1]d,"+
 						":d%[1]d,:j%[1]d,:dt%[1]d,:tm%[1]d FROM dual", i)
-					if i < len(fdvs)-1 {
+					if i < f.SmpNum-1 {
 						valueString += " UNION ALL "
 					}
 					valueStrings = append(valueStrings, valueString)
@@ -100,19 +100,24 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				ps, e := tran.Prepare(stmt)
 				if e != nil {
 					tran.Rollback()
-					log.Println(e)
+					log.Println("failed to create kdj_feat_dat prepared statement", e)
 					return errors.Wrap(e, "failed to create kdj_feat_dat prepared statement")
 				}
 				_, err := ps.Exec(valueArgs...)
 				if err != nil {
 					tran.Rollback()
-					log.Println(err)
+					log.Println("failed to bulk insert kdj_feat_dat", err)
 					return errors.Wrap(err, "failed to bulk insert kdj_feat_dat")
 				}
 			}
 		}
 	}
-	tran.Commit()
+	e = tran.Commit()
+	if e != nil {
+		tran.Rollback()
+		log.Println("failed to commit transaction", e)
+		return errors.Wrap(e, "failed to commit transaction")
+	}
 	*rep = true
 	return nil
 }
