@@ -62,7 +62,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 			}
 			stmt := fmt.Sprintf("INSERT INTO indc_feat (indc,fid,cytp,bysl,smp_num,fd_num,weight,remarks,"+
 				"udate,utime) WITH t AS (%s) SELECT * FROM t",
-				strings.Join(valueStrings, ","))
+				strings.Join(valueStrings, ""))
 			ps, e := tran.Prepare(stmt)
 			if e != nil {
 				tran.Rollback()
@@ -96,7 +96,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				}
 				stmt = fmt.Sprintf("INSERT INTO kdj_feat_dat (fid,seq,k,d,j,"+
 					"udate,utime) WITH t AS (%s) SELECT * FROM t",
-					strings.Join(valueStrings, ","))
+					strings.Join(valueStrings, ""))
 				ps, e := tran.Prepare(stmt)
 				if e != nil {
 					tran.Rollback()
