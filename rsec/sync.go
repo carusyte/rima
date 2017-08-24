@@ -20,13 +20,24 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 	defer func() {
 		log.Printf("DataSync.SyncKdjFd finished, input size: %d, time: %.2f", len(fdMap), time.Since(st).Seconds())
 	}()
+	tran, e := db.Ora().Begin()
+	if e != nil {
+		log.Println(e)
+		return errors.Wrap(e, "failed to begin new transaction")
+	}
+	_, e = tran.Exec("truncate table indc_feat")
+	if e != nil {
+		log.Println(e)
+		return errors.Wrap(e, "failed to truncate indc_feat")
+	}
+	_, e = tran.Exec("truncate table kdj_feat_dat")
+	if e != nil {
+		log.Println(e)
+		return errors.Wrap(e, "failed to truncate kdj_feat_dat")
+	}
 	for k, fdvs := range fdMap {
 		log.Printf("Saving KDJ Feature Data, key: %s,  len: %d", k, len(fdvs))
 		if len(fdvs) > 0 {
-			tran, e := db.Ora().Begin()
-			if e != nil {
-				return errors.Wrap(e, "failed to begin new transaction")
-			}
 			valueStrings := make([]string, 0, len(fdvs))
 			valueArgs := make([]interface{}, 0, len(fdvs)*10)
 			dt, tm := util.TimeStr()
@@ -44,12 +55,12 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				valueArgs = append(valueArgs, tm)
 			}
 			stmt := fmt.Sprintf("INSERT INTO indc_feat (indc,fid,cytp,bysl,smp_num,fd_num,weight,remarks,"+
-				"udate,utime) VALUES %s on duplicate key update fid=values(fid),fd_num=values(fd_num),weight=values"+
-				"(weight),remarks=values(remarks),udate=values(udate),utime=values(utime)",
+				"udate,utime) VALUES %s",
 				strings.Join(valueStrings, ","))
 			_, err := tran.Exec(stmt, valueArgs...)
 			if err != nil {
 				tran.Rollback()
+				log.Println(err)
 				return errors.Wrap(err, "failed to bulk insert indc_feat")
 			}
 
@@ -73,12 +84,13 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				_, err = tran.Exec(stmt, valueArgs...)
 				if err != nil {
 					tran.Rollback()
+					log.Println(err)
 					return errors.Wrap(err, "failed to bulk insert kdj_feat_dat")
 				}
 			}
-			tran.Commit()
 		}
 	}
+	tran.Commit()
 	*rep = true
 	return nil
 }
