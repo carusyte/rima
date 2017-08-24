@@ -41,8 +41,12 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 			valueStrings := make([]string, 0, len(fdvs))
 			valueArgs := make([]interface{}, 0, len(fdvs)*10)
 			dt, tm := util.TimeStr()
-			for _, f := range fdvs {
-				valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+			for i, f := range fdvs {
+				if i < len(fdvs)-1{
+					valueStrings = append(valueStrings, " SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM dual UNION ALL ")
+				}else{
+					valueStrings = append(valueStrings, " SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM dual")
+				}
 				valueArgs = append(valueArgs, f.Indc)
 				valueArgs = append(valueArgs, f.Fid)
 				valueArgs = append(valueArgs, f.Cytp)
@@ -55,7 +59,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				valueArgs = append(valueArgs, tm)
 			}
 			stmt := fmt.Sprintf("INSERT INTO indc_feat (indc,fid,cytp,bysl,smp_num,fd_num,weight,remarks,"+
-				"udate,utime) VALUES %s",
+				"udate,utime) WITH t AS (%s) SELECT * FROM t",
 				strings.Join(valueStrings, ","))
 			_, err := tran.Exec(stmt, valueArgs...)
 			if err != nil {
@@ -68,6 +72,11 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 				valueStrings = make([]string, 0, f.SmpNum)
 				valueArgs = make([]interface{}, 0, f.SmpNum*7)
 				for i := 0; i < f.SmpNum; i++ {
+					if i < len(fdvs)-1{
+						valueStrings = append(valueStrings, " SELECT ?, ?, ?, ?, ?, ?, ? FROM dual UNION ALL ")
+					}else{
+						valueStrings = append(valueStrings, " SELECT ?, ?, ?, ?, ?, ?, ? FROM dual")
+					}
 					valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?)")
 					valueArgs = append(valueArgs, f.Fid)
 					valueArgs = append(valueArgs, i)
@@ -78,8 +87,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 					valueArgs = append(valueArgs, tm)
 				}
 				stmt = fmt.Sprintf("INSERT INTO kdj_feat_dat (fid,seq,k,d,j,"+
-					"udate,utime) VALUES %s on duplicate key update k=values(k),d=values(d),"+
-					"j=values(j),udate=values(udate),utime=values(utime)",
+					"udate,utime) WITH t AS (%s) SELECT * FROM t",
 					strings.Join(valueStrings, ","))
 				_, err = tran.Exec(stmt, valueArgs...)
 				if err != nil {
