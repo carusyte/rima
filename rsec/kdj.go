@@ -13,10 +13,12 @@ import (
 	"log"
 	"reflect"
 	"github.com/chrislusf/gleam/util"
+	"time"
+	"github.com/carusyte/rima/db"
 )
 
 var (
-	kdjFdMap          map[string][]*model.KDJfdView
+	kdjFdMap          = make(map[string][]*model.KDJfdView)
 	lock              = sync.RWMutex{}
 	KdjScorer         = gio.RegisterMapper(kdjScoreMapper)
 	KdjScoreCollector = gio.RegisterReducer(kdjScoreReducer)
@@ -50,6 +52,7 @@ type KdjScore struct {
 	SellHdr, SellPdr, SellMpd, SellDi float64
 }
 
+// Deprecated. Use DataSync.SyncKdjFd instead.
 func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply *bool) error {
 	log.Printf("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
 	lock.Lock()
@@ -96,16 +99,18 @@ func getKdjMapSource(req *KdjScoreReq) [][]interface{} {
 	r := make([][]interface{}, len(req.Data))
 	for i, ks := range req.Data {
 		r[i] = make([]interface{}, 1)
-		// TODO no entity dto needed, use combination of slice and map instead
 		m := make(map[string]interface{})
 		r[i][0] = m
 		m["WgtDay"] = req.WgtDay
 		m["WgtWeek"] = req.WgtWeek
 		m["WgtMonth"] = req.WgtMonth
 		m["KdjDay"], m["KdjWeek"], m["KdjMonth"] = cvtKdjSeries(ks)
-		m["BuyDay"], m["SellDay"] = getKDJfdMaps(model.DAY, len(ks.KdjDy))
-		m["BuyWeek"], m["SellWeek"] = getKDJfdMaps(model.WEEK, len(ks.KdjWk))
-		m["BuyMonth"], m["SellMonth"] = getKDJfdMaps(model.MONTH, len(ks.KdjMo))
+		m["DayLen"] = len(ks.KdjDy)
+		m["WeekLen"] = len(ks.KdjWk)
+		m["MonthLen"] = len(ks.KdjMo)
+		//m["BuyDay"], m["SellDay"] = getKDJfdMaps(model.DAY, len(ks.KdjDy))
+		//m["BuyWeek"], m["SellWeek"] = getKDJfdMaps(model.WEEK, len(ks.KdjWk))
+		//m["BuyMonth"], m["SellMonth"] = getKDJfdMaps(model.MONTH, len(ks.KdjMo))
 	}
 	return r
 }
@@ -143,14 +148,20 @@ func cvtKdjSeries(ks *KdjSeries) (day, week, month map[string][]float64) {
 	return
 }
 
-func getKDJfdMaps(cytp model.CYTP, len int) (buy, sell []map[string]interface{}) {
+func getKDJfdMaps(cytp model.CYTP, len int) (buy, sell []map[string]interface{}, e error) {
 	buy = make([]map[string]interface{}, 0, 1024)
 	sell = make([]map[string]interface{}, 0, 1024)
 	for i := -2; i < 3; i++ {
 		n := len + i
 		if n >= 2 {
-			buyViews := GetKdjFeatDat(cytp, "BY", n)
-			sellViews := GetKdjFeatDat(cytp, "SL", n)
+			buyViews, e := GetKdjFeatDat(cytp, "BY", n)
+			if e != nil {
+				return nil, nil, e
+			}
+			sellViews, e := GetKdjFeatDat(cytp, "SL", n)
+			if e != nil {
+				return nil, nil, e
+			}
 			for _, v := range buyViews {
 				m := make(map[string]interface{})
 				m["Weight"] = v.Weight
@@ -172,11 +183,86 @@ func getKDJfdMaps(cytp model.CYTP, len int) (buy, sell []map[string]interface{})
 	return
 }
 
-func GetKdjFeatDat(cytp model.CYTP, bysl string, num int) []*model.KDJfdView {
+func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e error) {
+	buy = make([]*model.KDJfdView, 0, 1024)
+	sell = make([]*model.KDJfdView, 0, 1024)
+	for i := -2; i < 3; i++ {
+		n := len + i
+		if n >= 2 {
+			nbuy, e := GetKdjFeatDat(cytp, "BY", n)
+			if e != nil {
+				return nil, nil, e
+			}
+			buy = append(buy, nbuy...)
+			nsell, e := GetKdjFeatDat(cytp, "SL", n)
+			if e != nil {
+				return nil, nil, e
+			}
+			sell = append(sell, nsell...)
+		}
+	}
+	return
+}
+
+func GetKdjFeatDat(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, error) {
 	mk := kdjFdMapKey(cytp, bysl, num)
-	lock.RLock()
-	defer lock.RUnlock()
-	return kdjFdMap[mk];
+	lock.Lock()
+	defer lock.Unlock()
+
+	if fdvs, exists := kdjFdMap[mk]; exists {
+		return fdvs, nil
+	}
+	start := time.Now()
+	rows, e := db.Ora().Query(db.SQL_KDJ_FEAT_DAT, cytp, bysl, num)
+	if e != nil {
+		if "sql: no rows in result set" == e.Error() {
+			//FIXME what's the corresponding error message in Oracle?
+			fdvs := make([]*model.KDJfdView, 0)
+			kdjFdMap[mk] = fdvs
+			return fdvs, nil
+		} else {
+			return nil, errors.Wrap(e, "failed to query kdj feat dat")
+		}
+	}
+	defer rows.Close()
+	var (
+		fid                string
+		pfid               string
+		smpNum, fdNum, seq int
+		weight, k, d, j    float64
+		kfv                *model.KDJfdView
+	)
+	fdvs := make([]*model.KDJfdView, 0, 16)
+	for rows.Next() {
+		rows.Scan(&fid, &smpNum, &fdNum, &weight, &seq, &k, &d, &j)
+		if fid != pfid {
+			kfv = newKDJfdView(fid, bysl, cytp, smpNum, fdNum, weight)
+			fdvs = append(fdvs, kfv)
+		}
+		kfv.Add(k, d, j)
+		pfid = fid
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to query kdj feat dat.")
+	}
+	kdjFdMap[mk] = fdvs
+	log.Printf("query kdj_feat_dat(%s,%s,%d): %.2f", cytp, bysl, num, time.Since(start).Seconds())
+	return fdvs, nil
+}
+
+func newKDJfdView(fid, bysl string, cytp model.CYTP, smpNum, fdNum int, weight float64) *model.KDJfdView {
+	v := &model.KDJfdView{}
+	v.Indc = "KDJ"
+	v.Cytp = model.CYTP(cytp)
+	v.Fid = fid
+	v.Bysl = bysl
+	v.SmpNum = smpNum
+	v.FdNum = fdNum
+	v.Weight = weight
+	v.K = make([]float64, 0, 16)
+	v.D = make([]float64, 0, 16)
+	v.J = make([]float64, 0, 16)
+	return v
 }
 
 func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
@@ -188,18 +274,27 @@ func kdjScoreMapper(row []interface{}) error {
 	//interpRow(row)
 	m := row[0].([]interface{})[0].(map[interface{}]interface{})
 	//in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
-	sdy, e := calcKdjScore(m["KdjDay"].(map[interface{}]interface{}), m["BuyDay"].([]interface{}),
-		m["SellDay"].([]interface{}))
+	buyDay, sellDay, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["DayLen"])))
 	if e != nil {
 		return e
 	}
-	swk, e := calcKdjScore(m["KdjWeek"].(map[interface{}]interface{}), m["BuyWeek"].([]interface{}),
-		m["SellWeek"].([]interface{}))
+	sdy, e := calcKdjScore(m["KdjDay"].(map[interface{}]interface{}), buyDay, sellDay)
 	if e != nil {
 		return e
 	}
-	smo, e := calcKdjScore(m["KdjMonth"].(map[interface{}]interface{}), m["BuyMonth"].([]interface{}),
-		m["SellMonth"].([]interface{}))
+	buyWeek, sellWeek, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["WeekLen"])))
+	if e != nil {
+		return e
+	}
+	swk, e := calcKdjScore(m["KdjWeek"].(map[interface{}]interface{}), buyWeek, sellWeek)
+	if e != nil {
+		return e
+	}
+	buyMonth, sellMonth, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["MonthLen"])))
+	if e != nil {
+		return e
+	}
+	smo, e := calcKdjScore(m["KdjMonth"].(map[interface{}]interface{}), buyMonth, sellMonth)
 	if e != nil {
 		return e
 	}
@@ -277,7 +372,7 @@ func interpIntf(id string, intf interface{}) {
 	}
 }
 
-func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []interface{}) (s float64, e error) {
+func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
 	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
 	if e != nil {
@@ -326,15 +421,14 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 
 // Evaluates KDJ DEVIA indicator against pruned feature data, returns the following result:
 // Ratio of high DEVIA, ratio of positive DEVIA, mean of positive DEVIA, and DEVIA indicator, ranging from 0 to 1
-func calcKdjDI(hist map[interface{}]interface{}, fdvs []interface{}) (hdr, pdr, mpd, di float64, e error) {
+func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, pdr, mpd, di float64, e error) {
 	if len(hist) == 0 {
 		return 0, 0, 0, 0, nil
 	}
 	pds := make([]float64, 0, 16)
-	for _, fdi := range fdvs {
-		fd := fdi.(map[interface{}]interface{})
-		wgt := gio.ToFloat64(fd["Weight"])
-		bkd, e := bestKdjDevi(hist["K"], hist["D"], hist["J"], fd["K"], fd["D"], fd["J"])
+	for _, fd := range fdvs {
+		wgt := fd.Weight
+		bkd, e := bestKdjDevi(hist["K"], hist["D"], hist["J"], fd.K, fd.D, fd.J)
 		if e != nil {
 			return 0, 0, 0, 0, e
 		}
