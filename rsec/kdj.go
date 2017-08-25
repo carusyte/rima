@@ -87,7 +87,9 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	})
 
 	if len(req.Data) >= 4 {
-		f.Run(distributed.Option())
+		option := distributed.Option().SetDataCenter("defaultDataCenter")
+		option.Rack="defaultRack"
+		f.Run(option)
 	} else {
 		f.Run()
 	}
@@ -274,6 +276,7 @@ func kdjScoreMapper(row []interface{}) error {
 	//interpRow(row)
 	m := row[0].([]interface{})[0].(map[interface{}]interface{})
 	//in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
+	log.Printf("kdj score mapper parse map from input: %+v", m)
 	buyDay, sellDay, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["DayLen"])))
 	if e != nil {
 		return e
