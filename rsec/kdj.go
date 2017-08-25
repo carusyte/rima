@@ -88,7 +88,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 
 	if len(req.Data) >= 4 {
 		option := distributed.Option().SetDataCenter("defaultDataCenter")
-		option.Rack="defaultRack"
+		option.Rack = "defaultRack"
 		f.Run(option)
 	} else {
 		f.Run()
@@ -156,11 +156,11 @@ func getKDJfdMaps(cytp model.CYTP, len int) (buy, sell []map[string]interface{},
 	for i := -2; i < 3; i++ {
 		n := len + i
 		if n >= 2 {
-			buyViews, e := GetKdjFeatDat(cytp, "BY", n)
+			buyViews, e := kdjFdFrmDb(cytp, "BY", n)
 			if e != nil {
 				return nil, nil, e
 			}
-			sellViews, e := GetKdjFeatDat(cytp, "SL", n)
+			sellViews, e := kdjFdFrmDb(cytp, "SL", n)
 			if e != nil {
 				return nil, nil, e
 			}
@@ -191,12 +191,12 @@ func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e er
 	for i := -2; i < 3; i++ {
 		n := len + i
 		if n >= 2 {
-			nbuy, e := GetKdjFeatDat(cytp, "BY", n)
+			nbuy, e := kdjFdFrmCb(cytp, "BY", n)
 			if e != nil {
 				return nil, nil, e
 			}
 			buy = append(buy, nbuy...)
-			nsell, e := GetKdjFeatDat(cytp, "SL", n)
+			nsell, e := kdjFdFrmCb(cytp, "SL", n)
 			if e != nil {
 				return nil, nil, e
 			}
@@ -206,7 +206,13 @@ func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e er
 	return
 }
 
-func GetKdjFeatDat(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, error) {
+func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView, e error) {
+	mk := kdjFdMapKey(cytp, bysl, num)
+	_, e = db.Cb().Get(mk, &fdvs)
+	return;
+}
+
+func kdjFdFrmDb(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, error) {
 	mk := kdjFdMapKey(cytp, bysl, num)
 	lock.Lock()
 	defer lock.Unlock()

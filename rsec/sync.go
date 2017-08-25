@@ -31,6 +31,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 }
 
 func storeInCb(fdMap map[string][]*model.KDJfdView) error {
+	log.Printf("store data in cache server")
 	cb := db.Cb()
 	for k, v := range fdMap {
 		_, e := cb.Upsert(k, v, 0)
@@ -42,6 +43,7 @@ func storeInCb(fdMap map[string][]*model.KDJfdView) error {
 }
 
 func storeInDb(fdMap map[string][]*model.KDJfdView) error {
+	log.Printf("store data in database")
 	tran, e := db.Ora().Begin()
 	if e != nil {
 		log.Println("failed to start new transaction", e)
