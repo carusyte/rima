@@ -10,6 +10,7 @@ import (
 	"time"
 	"github.com/pkg/errors"
 	"math"
+	"github.com/carusyte/rima/cache"
 )
 
 type DataSync struct{}
@@ -32,7 +33,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 
 func storeInCb(fdMap map[string][]*model.KDJfdView) error {
 	log.Printf("store data in cache server")
-	cb := db.Cb()
+	cb := cache.Cb()
 	for k, v := range fdMap {
 		_, e := cb.Upsert(k, v, 0)
 		if e != nil {

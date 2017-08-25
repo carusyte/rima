@@ -15,6 +15,7 @@ import (
 	"github.com/chrislusf/gleam/util"
 	"time"
 	"github.com/carusyte/rima/db"
+	"github.com/carusyte/rima/cache"
 )
 
 var (
@@ -208,7 +209,7 @@ func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e er
 
 func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView, e error) {
 	mk := kdjFdMapKey(cytp, bysl, num)
-	_, e = db.Cb().Get(mk, &fdvs)
+	_, e = cache.Cb().Get(mk, &fdvs)
 	return;
 }
 
@@ -464,14 +465,11 @@ func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, 
 // Calculates the best match KDJ DEVIA, len(sk)==len(sd)==len(sj),
 // and len(sk) and len(tk) can vary.
 // DEVIA ranges from negative infinite to 1, with 1 indicating the most relevant KDJ data sets.
-func bestKdjDevi(ski, sdi, sji, tki, tdi, tji interface{}) (float64, error) {
+func bestKdjDevi(ski, sdi, sji interface{}, tk, td, tj []float64) (float64, error) {
 	//should we also consider the len(x) to weigh the final result?
 	sk := ski.([]interface{})
 	sd := sdi.([]interface{})
 	sj := sji.([]interface{})
-	tk := tki.([]interface{})
-	td := tdi.([]interface{})
-	tj := tji.([]interface{})
 	dif := len(sk) - len(tk)
 	if dif > 0 {
 		cc := -100.0
@@ -505,7 +503,7 @@ func bestKdjDevi(ski, sdi, sji, tki, tdi, tji interface{}) (float64, error) {
 	}
 }
 
-func CalcKdjDevi(sk, sd, sj, tk, td, tj []interface{}) (float64, error) {
+func CalcKdjDevi(sk, sd, sj []interface{}, tk, td, tj []float64) (float64, error) {
 	kcc, e := Devi(sk, tk)
 	if e != nil {
 		return 0, errors.New(fmt.Sprintf("failed to calculate kcc: %+v, %+v", sk, tk))
@@ -522,7 +520,7 @@ func CalcKdjDevi(sk, sd, sj, tk, td, tj []interface{}) (float64, error) {
 	return -0.001*math.Pow(scc, math.E) + 1, nil
 }
 
-func Devi(a, b []interface{}) (float64, error) {
+func Devi(a []interface{}, b []float64) (float64, error) {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0, errors.New("invalid input")
 	}
