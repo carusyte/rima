@@ -426,7 +426,9 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 		r = x.([]interface{})
 	case []float64:
 		r = make([]interface{}, 0, 16)
-		r = append(r, x.([]float64)...)
+		for _, ix := range x.([]float64) {
+			r = append(r, ix)
+		}
 	}
 	switch y.(type) {
 	case float64:
@@ -434,7 +436,9 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 	case []interface{}:
 		r = append(r, y.([]interface{})...)
 	case []float64:
-		r = append(r, y.([]float64)...)
+		for _, iy := range y.([]float64) {
+			r = append(r, iy)
+		}
 	}
 	return r, nil
 }
