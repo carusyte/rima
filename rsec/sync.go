@@ -21,6 +21,27 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 	defer func() {
 		log.Printf("DataSync.SyncKdjFd finished, input size: %d, time: %.2f", len(fdMap), time.Since(st).Seconds())
 	}()
+	//e := storeInDb(fdMap)
+	e := storeInCb(fdMap)
+	if e != nil {
+		return e
+	}
+	*rep = true
+	return nil
+}
+
+func storeInCb(fdMap map[string][]*model.KDJfdView) error {
+	cb := db.Cb()
+	for k, v := range fdMap {
+		_, e := cb.Upsert(k, v, 0)
+		if e != nil {
+			return errors.Wrapf(e, "failed to store %s to cache server.", k)
+		}
+	}
+	return nil
+}
+
+func storeInDb(fdMap map[string][]*model.KDJfdView) error {
 	tran, e := db.Ora().Begin()
 	if e != nil {
 		log.Println("failed to start new transaction", e)
@@ -45,14 +66,13 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 		log.Printf("Saving KDJ Feature Data, key: %s,  len: %d", k, len(fdvs))
 		i := 0
 		for ; i < len(fdvs); i += 300 {
-			end := int(math.Min(float64(i+300),float64(len(fdvs))))
+			end := int(math.Min(float64(i+300), float64(len(fdvs))))
 			e := bulkInsertFdvs(fdvs[i:end])
 			if e != nil {
 				return e
 			}
 		}
 	}
-	*rep = true
 	return nil
 }
 
