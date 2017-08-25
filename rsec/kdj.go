@@ -77,7 +77,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, len(req.Data))
 	f := flow.New("KDJ Score Calculation").Slices(mapSource).Partition("partition",
-		int(shard), sortOption).
+		int(shard), sortOption).RoundRobin("rr", int(shard)).
 		Map("kdjScorer", KdjScorer). // invoke the registered "kdjScorer" mapper function.
 		ReduceBy("kdjScoreCollector", KdjScoreCollector, sortOption). // invoke the registered "kdjScoreCollector" reducer function.
 		OutputRow(func(r *util.Row) error {
@@ -415,8 +415,8 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 }
 
 func kdjScoreReducer(x, y interface{}) (interface{}, error) {
-	//interpIntf("x", x)
-	//interpIntf("y", y)
+	interpIntf("x", x)
+	interpIntf("y", y)
 	var r []interface{}
 	switch x.(type) {
 	case float64:
@@ -424,8 +424,18 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 		r[0] = x
 	case []interface{}:
 		r = x.([]interface{})
+	case []float64:
+		r = make([]interface{}, 0, 16)
+		r = append(r, x.([]float64)...)
 	}
-	r = append(r, y)
+	switch y.(type) {
+	case float64:
+		r = append(r, y)
+	case []interface{}:
+		r = append(r, y.([]interface{})...)
+	case []float64:
+		r = append(r, y.([]float64)...)
+	}
 	return r, nil
 }
 
