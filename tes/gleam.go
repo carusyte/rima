@@ -31,11 +31,7 @@ func (d *GTest) WordCount(req *string, rep *bool) error {
 		Top("top5", 5, flow.OrderBy(2, false)).
 		Printlnf("%s\t%d")
 
-	if *isDistributed {
-		f.Run(distributed.Option())
-	} else {
-		f.Run()
-	}
+	f.Run(distributed.Option())
 	return nil
 }
 

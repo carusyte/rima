@@ -16,6 +16,7 @@ import (
 	"time"
 	"github.com/carusyte/rima/db"
 	"github.com/carusyte/rima/cache"
+	logr "github.com/sirupsen/logrus"
 )
 
 var (
@@ -24,6 +25,10 @@ var (
 	KdjScorer         = gio.RegisterMapper(kdjScoreMapper)
 	KdjScoreCollector = gio.RegisterReducer(kdjScoreReducer)
 )
+
+func init() {
+	logr.SetLevel(logr.DebugLevel)
+}
 
 type IndcScorer struct{}
 
@@ -205,6 +210,7 @@ func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e er
 			sell = append(sell, nsell...)
 		}
 	}
+	logr.Debugf("getting kdj fd views, cytp: %s, len: %d,\nbuys:%+v,\nsells:%+v", cytp, len, buy, sell)
 	return
 }
 
@@ -413,6 +419,7 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 	} else if bdi >= 0.81 {
 		s += 70
 	}
+	logr.Printf("kdj score calculation, score:%f, kdj:%+v\nbuyfds:%+v\nsellfds:%+v", s, kdj, buyfds, sellfds)
 	return s, nil
 }
 
