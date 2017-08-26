@@ -299,7 +299,7 @@ func kdjScoreMapper(row []interface{}) error {
 	if e != nil {
 		return e
 	}
-	buyWeek, sellWeek, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["WeekLen"])))
+	buyWeek, sellWeek, e := getKDJfdViews(model.WEEK, int(gio.ToInt64(m["WeekLen"])))
 	if e != nil {
 		return e
 	}
@@ -307,7 +307,7 @@ func kdjScoreMapper(row []interface{}) error {
 	if e != nil {
 		return e
 	}
-	buyMonth, sellMonth, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["MonthLen"])))
+	buyMonth, sellMonth, e := getKDJfdViews(model.MONTH, int(gio.ToInt64(m["MonthLen"])))
 	if e != nil {
 		return e
 	}
@@ -462,6 +462,8 @@ func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, 
 	for _, fd := range fdvs {
 		wgt := fd.Weight
 		bkd, e := bestKdjDevi(hist["K"], hist["D"], hist["J"], fd.K, fd.D, fd.J)
+		logr.Debugf("sk:%+v, sd:%+v, sj:%+v, tk:%+v, td:%+v, tj:%+v, best kdj devi: %f",
+			hist["K"], hist["D"], hist["J"], fd.K, fd.D, fd.J, bkd)
 		if e != nil {
 			return 0, 0, 0, 0, e
 		}
@@ -482,6 +484,7 @@ func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, 
 	di += 0.3 * math.Min(1, math.Pow(math.Log(pdr+1), 0.37)+0.4*math.Pow(pdr, math.Pi)+math.Pow(pdr, 0.476145))
 	di += 0.2 * math.Min(1, math.Pow(math.Log(math.Pow(mpd, math.E*math.Pi/1.1)+1), 0.06)+
 		math.E/1.25/math.Pi*math.Pow(mpd, math.E*math.Pi))
+	logr.Debugf("kdj di calculation, hdr: %f, pdr: %f, mpd: %f, di: %f", hdr, pdr, mpd, di)
 	return
 }
 
