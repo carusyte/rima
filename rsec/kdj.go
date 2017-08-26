@@ -88,7 +88,8 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	})
 
 	if len(req.Data) >= 4 {
-		option := distributed.Option().SetDataCenter("defaultDataCenter")
+		option := distributed.Option().SetDataCenter("defaultDataCenter").
+			SetMaster("localhost:45326")
 		option.Rack = "defaultRack"
 		f.Run(option)
 	} else {
@@ -318,6 +319,7 @@ func kdjScoreMapper(row []interface{}) error {
 	s = math.Min(100, math.Max(0, s))
 
 	//gio.Emit([]float64{s})
+	log.Printf("mapper calculated score: %f, emitting", s)
 	gio.Emit("KDJS", s)
 	//gio.Emit("KDJS", 2.13)
 
