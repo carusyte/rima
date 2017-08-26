@@ -391,6 +391,7 @@ func interpIntf(id string, intf interface{}) {
 }
 
 func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
+	logr.Printf("kdj score calculation, input:%+v, len:%d", kdj, len(kdj))
 	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
 	if e != nil {
