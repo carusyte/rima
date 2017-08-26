@@ -192,11 +192,11 @@ func getKDJfdMaps(cytp model.CYTP, len int) (buy, sell []map[string]interface{},
 	return
 }
 
-func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e error) {
+func getKDJfdViews(cytp model.CYTP, num int) (buy, sell []*model.KDJfdView, e error) {
 	buy = make([]*model.KDJfdView, 0, 1024)
 	sell = make([]*model.KDJfdView, 0, 1024)
 	for i := -2; i < 3; i++ {
-		n := len + i
+		n := num + i
 		if n >= 2 {
 			nbuy, e := kdjFdFrmCb(cytp, "BY", n)
 			if e != nil {
@@ -210,7 +210,7 @@ func getKDJfdViews(cytp model.CYTP, len int) (buy, sell []*model.KDJfdView, e er
 			sell = append(sell, nsell...)
 		}
 	}
-	logr.Debugf("getting kdj fd views, cytp: %s, len: %d,\nbuys:%+v,\nsells:%+v", cytp, len, buy, sell)
+	logr.Debugf("getting kdj fd views, cytp: %s, num: %d,\n buys:%+v,\n sells:%+v", cytp, num, len(buy), len(sell))
 	return
 }
 
@@ -419,7 +419,7 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 	} else if bdi >= 0.81 {
 		s += 70
 	}
-	logr.Printf("kdj score calculation, score:%f, kdj:%+v\nbuyfds:%+v\nsellfds:%+v", s, kdj, buyfds, sellfds)
+	logr.Printf("kdj score calculation, bdi:%f, sdi:%f, score:%f", bdi, sdi, s)
 	return s, nil
 }
 
