@@ -32,5 +32,4 @@ func main() {
 		Printlnf("%s\t%d")
 	f.Run(distributed.Option())
 	log.Printf("WordCount finished")
-
 }
