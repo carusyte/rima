@@ -7,6 +7,7 @@ import (
 	"flag"
 	"github.com/chrislusf/gleam/flow"
 	"strings"
+	"log"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 type GTest struct{}
 
 func (d *GTest) WordCount(req *string, rep *bool) error {
+	log.Printf("GTest.WordCount is called")
 	//gio.Init() // If the command line invokes the mapper or reducer, execute it and exit.
 	sortOption := (&flow.SortOption{}).By(1, true)
 	//flag.Parse() // optional, since gio.Init() will call this also.
@@ -30,8 +32,8 @@ func (d *GTest) WordCount(req *string, rep *bool) error {
 		Sort("sortBySum", flow.OrderBy(2, true)).
 		Top("top5", 5, flow.OrderBy(2, false)).
 		Printlnf("%s\t%d")
-
 	f.Run(distributed.Option())
+	log.Printf("GTest.WordCount finished")
 	return nil
 }
 
