@@ -391,7 +391,7 @@ func interpIntf(id string, intf interface{}) {
 }
 
 func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
-	logr.Printf("kdj score calculation, input:%+v, len:%d", kdj, len(kdj))
+	logr.Printf("kdj score calculation, input:%+v, buy len:%d, sell len:%d", kdj, len(buyfds), len(sellfds))
 	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
 	if e != nil {
@@ -484,10 +484,13 @@ func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, 
 			}
 		}
 	}
+	logr.Printf("pds: %+v", pds)
 	if len(pds) > 0 {
 		mpd, e = stats.Mean(pds)
-		e = errors.Wrap(e, "failed to calculate mean of positive devia")
-		return 0, 0, 0, 0, e
+		if e != nil {
+			e = errors.Wrap(e, "failed to calculate mean of positive devia")
+			return 0, 0, 0, 0, e
+		}
 	}
 	di = 0.5 * math.Min(1, math.Pow(hdr+0.92, 50))
 	di += 0.3 * math.Min(1, math.Pow(math.Log(pdr+1), 0.37)+0.4*math.Pow(pdr, math.Pi)+math.Pow(pdr, 0.476145))
