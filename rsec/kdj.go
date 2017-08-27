@@ -456,6 +456,14 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 // Evaluates KDJ DEVIA indicator against pruned feature data, returns the following result:
 // Ratio of high DEVIA, ratio of positive DEVIA, mean of positive DEVIA, and DEVIA indicator, ranging from 0 to 1
 func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, pdr, mpd, di float64, e error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logr.Errorf("calcKdjDI.recover() is not nil: %+v", r)
+			if er, ok := r.(error); ok {
+				e = errors.Wrap(er, "failed to execute calcKdjDI")
+			}
+		}
+	}()
 	if len(hist) == 0 {
 		return 0, 0, 0, 0, nil
 	}
@@ -463,8 +471,8 @@ func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, 
 	for _, fd := range fdvs {
 		wgt := fd.Weight
 		bkd, e := bestKdjDevi(hist["K"], hist["D"], hist["J"], fd.K, fd.D, fd.J)
-		logr.Debugf("sk:%+v, sd:%+v, sj:%+v, tk:%+v, td:%+v, tj:%+v, best kdj devi: %f",
-			hist["K"], hist["D"], hist["J"], fd.K, fd.D, fd.J, bkd)
+		logr.Debugf("sk:%+v, sd:%+v, sj:%+v, tk:%+v, td:%+v, tj:%+v, best kdj devi: %f, error: %+v",
+			hist["K"], hist["D"], hist["J"], fd.K, fd.D, fd.J, bkd, e)
 		if e != nil {
 			return 0, 0, 0, 0, e
 		}
