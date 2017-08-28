@@ -2,10 +2,6 @@ package db
 
 import (
 	"gopkg.in/gorp.v2"
-	"github.com/carusyte/stock/util"
-	"database/sql"
-	//_ "gopkg.in/rana/ora.v4"
-	"github.com/carusyte/stock/db"
 )
 
 var (
