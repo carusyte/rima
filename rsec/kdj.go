@@ -27,7 +27,7 @@ var (
 )
 
 func init() {
-	logr.SetLevel(logr.DebugLevel)
+	logr.SetLevel(logr.InfoLevel)
 }
 
 type IndcScorer struct{}
