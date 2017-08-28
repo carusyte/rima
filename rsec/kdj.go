@@ -375,7 +375,7 @@ func interpIntf(id string, intf interface{}) {
 		a := intf.([]interface{})
 		log.Printf("%s intf is type []interface{}, size: %d, iterating the array:", id, len(a))
 		for j, ia := range a {
-			log.Printf("%s[%d] is type %+v", id, j, reflect.TypeOf(ia))
+			log.Printf("%s[%d] is type %+v: %+v", id, j, reflect.TypeOf(ia), ia)
 			// more to be explored...
 			switch ia.(type) {
 			case map[interface{}]interface{}:
@@ -390,7 +390,7 @@ func interpIntf(id string, intf interface{}) {
 		m := intf.(map[interface{}]interface{})
 		log.Printf("%s intf map size: %d, iterating the map:", id, len(m))
 		for k, v := range m {
-			log.Printf("%s, k: %+v\tv: %+v", id, k, v)
+			log.Printf("%s, k(%+v): %+v\tv(%+v): %+v", id, reflect.TypeOf(k), k, reflect.TypeOf(v), v)
 		}
 	}
 }
@@ -430,8 +430,8 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 }
 
 func kdjScoreReducer(x, y interface{}) (interface{}, error) {
-	//interpIntf("x", x)
-	//interpIntf("y", y)
+	interpIntf("x", x)
+	interpIntf("y", y)
 	var r []interface{}
 	switch x.(type) {
 	case float64:
