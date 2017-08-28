@@ -38,6 +38,7 @@ type KdjScoreReq struct {
 }
 
 type KdjSeries struct {
+	RowId string
 	// KDJ data of day, week and month
 	KdjDy, KdjWk, KdjMo []*model.Indicator
 }
@@ -49,6 +50,7 @@ type KdjScoreCalcInput struct {
 }
 
 type KdjScoreRep struct {
+	RowIds []string
 	Scores []float64
 }
 
@@ -81,11 +83,15 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	}
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, len(req.Data))
+	rep.RowIds = make([]string, len(req.Data))
 	f := flow.New("KDJ Score Calculation").Slices(mapSource).RoundRobin("rr", int(shard)).
 		Map("kdjScorer", KdjScorer).
 		ReduceBy("kdjScoreCollector", KdjScoreCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
 		logr.Debugf("Output Row: %+v", r)
+		for i, k := range r.K[0].([]interface{}){
+			rep.RowIds[i] = k.(string)
+		}
 		for i, v := range r.V[0].([]interface{}) {
 			rep.Scores[i] = v.(float64)
 		}
@@ -117,6 +123,7 @@ func getKdjMapSource(req *KdjScoreReq) [][]interface{} {
 		m["DayLen"] = len(ks.KdjDy)
 		m["WeekLen"] = len(ks.KdjWk)
 		m["MonthLen"] = len(ks.KdjMo)
+		m["RowId"] = ks.RowId
 		//m["BuyDay"], m["SellDay"] = getKDJfdMaps(model.DAY, len(ks.KdjDy))
 		//m["BuyWeek"], m["SellWeek"] = getKDJfdMaps(model.WEEK, len(ks.KdjWk))
 		//m["BuyMonth"], m["SellMonth"] = getKDJfdMaps(model.MONTH, len(ks.KdjMo))
@@ -324,9 +331,10 @@ func kdjScoreMapper(row []interface{}) error {
 	s /= wgtDay + wgtWeek + wgtMonth
 	s = math.Min(100, math.Max(0, s))
 
+	rowId := m["RowId"].(string)
 	//gio.Emit([]float64{s})
-	log.Printf("mapper calculated score: %f, emitting", s)
-	gio.Emit("KDJS", s)
+	log.Printf("%s calculated score: %f, emitting", rowId, s)
+	gio.Emit(rowId, s)
 	//gio.Emit("KDJS", 2.13)
 
 	return nil
