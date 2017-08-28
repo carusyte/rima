@@ -85,6 +85,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 		Map("kdjScorer", KdjScorer).
 		ReduceBy("kdjScoreCollector", KdjScoreCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
+		logr.Debugf("Output Row: %+v", r)
 		for i, v := range r.V[0].([]interface{}) {
 			rep.Scores[i] = v.(float64)
 		}
@@ -424,8 +425,8 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 }
 
 func kdjScoreReducer(x, y interface{}) (interface{}, error) {
-	interpIntf("x", x)
-	interpIntf("y", y)
+	//interpIntf("x", x)
+	//interpIntf("y", y)
 	var r []interface{}
 	switch x.(type) {
 	case float64:
