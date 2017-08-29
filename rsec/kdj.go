@@ -430,8 +430,8 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 }
 
 func kdjScoreReducer(x, y interface{}) (interface{}, error) {
-	interpIntf("x", x)
-	interpIntf("y", y)
+	//interpIntf("x", x)
+	//interpIntf("y", y)
 	var r []interface{}
 	switch x.(type) {
 	case float64:
