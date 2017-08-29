@@ -455,7 +455,6 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 			r = append(r, iy)
 		}
 	}
-	logr.Printf("final result in reducer: %+v, %+v", reflect.TypeOf(r), r)
 	return r, nil
 }
 
