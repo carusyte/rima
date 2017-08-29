@@ -77,10 +77,11 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	logr.Printf("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
 	shard := 4.0
-	shard, e := stats.Round(math.Pow(math.Log(float64(len(req.Data))), math.SqrtPi), 0)
+	shard, e := stats.Round(math.Pow(math.Log(float64(len(req.Data))), math.SqrtPi*math.Sqrt2), 0)
 	if e != nil {
 		return e
 	}
+	logr.Printf("#shard: %d", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, 0, 16)
 	rep.RowIds = make([]string, 0, 16)
