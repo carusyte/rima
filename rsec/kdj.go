@@ -27,7 +27,7 @@ var (
 )
 
 func init() {
-	logr.SetLevel(logr.DebugLevel)
+	logr.SetLevel(logr.InfoLevel)
 }
 
 type IndcScorer struct{}
@@ -62,19 +62,19 @@ type KdjScore struct {
 
 // Deprecated. Use DataSync.SyncKdjFd instead.
 func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply *bool) error {
-	log.Printf("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
+	logr.Printf("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
 	lock.Lock()
 	defer lock.Unlock()
 	kdjFdMap = *fdMap
 	*reply = true
-	log.Printf("IndcScorer.InitKdjFeatDat finished. fdmap size: %d", len(kdjFdMap))
+	logr.Printf("IndcScorer.InitKdjFeatDat finished. fdmap size: %d", len(kdjFdMap))
 	return nil
 }
 
 //Score by assessing the historical data against the sampled feature data.
 func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	//call gleam api to map and reduce
-	log.Printf("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
+	logr.Printf("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
 	shard := 4.0
 	shard, e := stats.Round(math.Pow(math.Log(float64(len(req.Data))), math.SqrtPi), 0)
@@ -102,7 +102,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	} else {
 		f.Run()
 	}
-	log.Printf("IndcScorer.ScoreKdj finished, score size: %d", len(rep.Scores))
+	logr.Printf("IndcScorer.ScoreKdj finished, score size: %d", len(rep.Scores))
 	return nil
 }
 
@@ -265,7 +265,7 @@ func kdjFdFrmDb(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, erro
 		return nil, errors.Wrap(err, "failed to query kdj feat dat.")
 	}
 	kdjFdMap[mk] = fdvs
-	log.Printf("query kdj_feat_dat(%s,%s,%d): %.2f", cytp, bysl, num, time.Since(start).Seconds())
+	logr.Debugf("query kdj_feat_dat(%s,%s,%d): %.2f", cytp, bysl, num, time.Since(start).Seconds())
 	return fdvs, nil
 }
 
@@ -293,7 +293,8 @@ func kdjScoreMapper(row []interface{}) error {
 	//interpRow(row)
 	m := row[0].([]interface{})[0].(map[interface{}]interface{})
 	//in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
-	log.Printf("kdj score mapper parse map from input: %+v", m)
+	logr.Debugf("kdj score mapper receive row len: %d, row[0] len: %d,"+
+		" parse map from input: %+v", len(row), len(row[0].([]interface{})), m)
 	buyDay, sellDay, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["DayLen"])))
 	if e != nil {
 		return e
@@ -329,7 +330,7 @@ func kdjScoreMapper(row []interface{}) error {
 
 	rowId := m["RowId"].(string)
 	//gio.Emit([]float64{s})
-	log.Printf("%s calculated score: %f, emitting", rowId, s)
+	logr.Debugf("%s calculated score: %f, emitting", rowId, s)
 	gio.Emit(rowId, s)
 	//gio.Emit("KDJS", 2.13)
 
@@ -374,7 +375,7 @@ func interpIntf(id string, intf interface{}) {
 		a := intf.([]interface{})
 		log.Printf("%s intf is type []interface{}, size: %d, iterating the array:", id, len(a))
 		for j, ia := range a {
-			log.Printf("%s[%d] is type %+v", id, j, reflect.TypeOf(ia))
+			log.Printf("%s[%d] is type %+v: %+v", id, j, reflect.TypeOf(ia), ia)
 			// more to be explored...
 			switch ia.(type) {
 			case map[interface{}]interface{}:
@@ -389,13 +390,13 @@ func interpIntf(id string, intf interface{}) {
 		m := intf.(map[interface{}]interface{})
 		log.Printf("%s intf map size: %d, iterating the map:", id, len(m))
 		for k, v := range m {
-			log.Printf("%s, k: %+v\tv: %+v", id, k, v)
+			log.Printf("%s, k(%+v): %+v\tv(%+v): %+v", id, reflect.TypeOf(k), k, reflect.TypeOf(v), v)
 		}
 	}
 }
 
 func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
-	logr.Printf("kdj score calculation, input:%+v, buy len:%d, sell len:%d", kdj, len(buyfds), len(sellfds))
+	logr.Debugf("kdj score calculation, input:%+v, buy len:%d, sell len:%d", kdj, len(buyfds), len(sellfds))
 	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
 	if e != nil {
@@ -424,7 +425,7 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 	} else if bdi >= 0.81 {
 		s += 70
 	}
-	logr.Printf("kdj score calculation, bdi:%f, sdi:%f, score:%f", bdi, sdi, s)
+	logr.Debugf("kdj score calculation, bdi:%f, sdi:%f, score:%f", bdi, sdi, s)
 	return s, nil
 }
 
@@ -454,6 +455,7 @@ func kdjScoreReducer(x, y interface{}) (interface{}, error) {
 			r = append(r, iy)
 		}
 	}
+	logr.Debugf("final result in reducer: %+v, %+v", reflect.TypeOf(r), r)
 	return r, nil
 }
 
@@ -488,7 +490,7 @@ func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, 
 			}
 		}
 	}
-	logr.Printf("pds: %+v", pds)
+	logr.Debugf("pds: %+v", pds)
 	if len(pds) > 0 {
 		mpd, e = stats.Mean(pds)
 		if e != nil {
