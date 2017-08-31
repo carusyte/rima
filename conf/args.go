@@ -31,6 +31,23 @@ func init() {
 	} else {
 		logrus.Infof("Configuration: %+v", Args)
 		//v.WatchConfig()
+
+		var level logrus.Level
+		switch Args.LogLevel {
+		case "debug":
+			level = logrus.DebugLevel
+		case "info":
+			level = logrus.InfoLevel
+		case "warning":
+			level = logrus.WarnLevel
+		case "error":
+			level = logrus.ErrorLevel
+		case "fatal":
+			level = logrus.FatalLevel
+		case "panic":
+			level = logrus.PanicLevel
+		}
+		logrus.SetLevel(level)
 	}
 }
 
