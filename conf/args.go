@@ -30,7 +30,7 @@ func init() {
 		logrus.Infof("config file error: %s", err)
 	} else {
 		logrus.Infof("Configuration: %+v", Args)
-		v.WatchConfig()
+		//v.WatchConfig()
 	}
 }
 
