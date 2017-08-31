@@ -17,6 +17,7 @@ func init() {
 	v.AddConfigPath(".")      // optionally look for config in the working directory
 	v.AddConfigPath("$GOPATH/bin")
 	v.AddConfigPath("$HOME")
+	v.AddConfigPath("$HOME/go/bin")
 	err := v.ReadInConfig()
 	if err != nil {
 		logrus.Errorf("config file error: %+v", err)
