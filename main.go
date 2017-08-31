@@ -7,6 +7,8 @@ import (
 	"log"
 	"github.com/carusyte/rima/rsec"
 	"github.com/carusyte/rima/tes"
+	"github.com/sirupsen/logrus"
+	"github.com/carusyte/rima/conf"
 )
 
 func main() {
@@ -27,4 +29,23 @@ func main() {
 	// This statement links rpc server to the socket, and allows rpc server to accept
 	// rpc request coming from that socket.
 	svr.Accept(l)
+}
+
+func init() {
+	var level logrus.Level
+	switch conf.Args.LogLevel {
+	case "debug":
+		level = logrus.DebugLevel
+	case "info":
+		level = logrus.InfoLevel
+	case "warning":
+		level = logrus.WarnLevel
+	case "error":
+		level = logrus.ErrorLevel
+	case "fatal":
+		level = logrus.FatalLevel
+	case "panic":
+		level = logrus.PanicLevel
+	}
+	logrus.SetLevel(level)
 }

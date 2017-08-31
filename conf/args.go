@@ -9,12 +9,14 @@ var Args Arguments
 
 type Arguments struct {
 	CouchbaseServers string `mapstructure:"couchbase_servers"`
+	LogLevel         string `mapstructure:"log_level"`
 }
 
 func init() {
+	setDefaults()
 	v := viper.New()
 	v.SetConfigName("rima") // name of config file (without extension)
-	v.AddConfigPath(".")      // optionally look for config in the working directory
+	v.AddConfigPath(".")    // optionally look for config in the working directory
 	v.AddConfigPath("$GOPATH/bin")
 	v.AddConfigPath("$HOME")
 	v.AddConfigPath("$HOME/go/bin")
@@ -30,4 +32,8 @@ func init() {
 		logrus.Infof("Configuration: %+v", Args)
 		v.WatchConfig()
 	}
+}
+
+func setDefaults() {
+	Args.LogLevel = "info"
 }

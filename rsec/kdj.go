@@ -26,10 +26,6 @@ var (
 	KdjScoreCollector = gio.RegisterReducer(kdjScoreReducer)
 )
 
-func init() {
-	logr.SetLevel(logr.InfoLevel)
-}
-
 type IndcScorer struct{}
 
 // Deprecated. Use DataSync.SyncKdjFd instead.
