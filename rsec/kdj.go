@@ -34,26 +34,26 @@ type IndcScorer struct{}
 
 // Deprecated. Use DataSync.SyncKdjFd instead.
 func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply *bool) error {
-	logr.Printf("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
+	logr.Infof("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
 	lock.Lock()
 	defer lock.Unlock()
 	kdjFdMap = *fdMap
 	*reply = true
-	logr.Printf("IndcScorer.InitKdjFeatDat finished. fdmap size: %d", len(kdjFdMap))
+	logr.Infof("IndcScorer.InitKdjFeatDat finished. fdmap size: %d", len(kdjFdMap))
 	return nil
 }
 
 //Score by assessing the historical data against the sampled feature data.
 func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	//call gleam api to map and reduce
-	logr.Printf("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
+	logr.Infof("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
 	shard := 4.0
 	shard, e := stats.Round(math.Pow(math.Log(float64(len(req.Data))), math.SqrtPi*math.Sqrt2), 0)
 	if e != nil {
 		return e
 	}
-	logr.Printf("#shard: %.0f", shard)
+	logr.Infof("#shard: %.0f", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, 0, 16)
 	rep.RowIds = make([]string, 0, 16)
@@ -75,7 +75,7 @@ func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	} else {
 		f.Run()
 	}
-	logr.Printf("IndcScorer.ScoreKdj finished, score size: %d", len(rep.Scores))
+	logr.Infof("IndcScorer.ScoreKdj finished, score size: %d", len(rep.Scores))
 	return nil
 }
 
@@ -314,7 +314,7 @@ func kdjScoreMapper(row []interface{}) error {
 func interpRow(row []interface{}) {
 	logr.Debugf("kdjScoreMapper param type: %+v, row len: %d", reflect.TypeOf(row), len(row))
 	for i, ie := range row {
-		logr.Printf("row[%d] type: %+v, value: %+v", i, reflect.TypeOf(ie), ie)
+		logr.Infof("row[%d] type: %+v, value: %+v", i, reflect.TypeOf(ie), ie)
 		switch ie.(type) {
 		case []interface{}:
 			a := ie.([]interface{})
