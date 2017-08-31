@@ -2,6 +2,7 @@ package rsec
 
 import (
 	"github.com/carusyte/stock/model"
+	rm "github.com/carusyte/rima/model"
 	"fmt"
 	"math"
 	"sync"
@@ -10,7 +11,6 @@ import (
 	"github.com/chrislusf/gleam/gio"
 	"github.com/montanaflynn/stats"
 	"github.com/pkg/errors"
-	"log"
 	"reflect"
 	"github.com/chrislusf/gleam/util"
 	"time"
@@ -32,34 +32,6 @@ func init() {
 
 type IndcScorer struct{}
 
-type KdjScoreReq struct {
-	Data                      []*KdjSeries
-	WgtDay, WgtWeek, WgtMonth float64
-}
-
-type KdjSeries struct {
-	RowId string
-	// KDJ data of day, week and month
-	KdjDy, KdjWk, KdjMo []*model.Indicator
-}
-
-type KdjScoreCalcInput struct {
-	*KdjSeries
-	WgtDay, WgtWeek, WgtMonth                   float64
-	BuyDy, BuyWk, BuyMo, SellDy, SellWk, SellMo []*model.KDJfdView
-}
-
-type KdjScoreRep struct {
-	RowIds []string
-	Scores []float64
-}
-
-type KdjScore struct {
-	Score                             float64
-	BuyHdr, BuyPdr, BuyMpd, BuyDi     float64
-	SellHdr, SellPdr, SellMpd, SellDi float64
-}
-
 // Deprecated. Use DataSync.SyncKdjFd instead.
 func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply *bool) error {
 	logr.Printf("IndcScorer.InitKdjFeatDat called, fdmap size: %d", len(*fdMap))
@@ -72,7 +44,7 @@ func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply 
 }
 
 //Score by assessing the historical data against the sampled feature data.
-func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
+func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	//call gleam api to map and reduce
 	logr.Printf("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
@@ -81,7 +53,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	if e != nil {
 		return e
 	}
-	logr.Printf("#shard: %d", shard)
+	logr.Printf("#shard: %.0f", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, 0, 16)
 	rep.RowIds = make([]string, 0, 16)
@@ -107,7 +79,7 @@ func (s *IndcScorer) ScoreKdj(req *KdjScoreReq, rep *KdjScoreRep) error {
 	return nil
 }
 
-func getKdjMapSource(req *KdjScoreReq) [][]interface{} {
+func getKdjMapSource(req *rm.KdjScoreReq) [][]interface{} {
 	r := make([][]interface{}, len(req.Data))
 	for i, ks := range req.Data {
 		r[i] = make([]interface{}, 1)
@@ -121,14 +93,14 @@ func getKdjMapSource(req *KdjScoreReq) [][]interface{} {
 		m["WeekLen"] = len(ks.KdjWk)
 		m["MonthLen"] = len(ks.KdjMo)
 		m["RowId"] = ks.RowId
-		//m["BuyDay"], m["SellDay"] = getKDJfdMaps(model.DAY, len(ks.KdjDy))
-		//m["BuyWeek"], m["SellWeek"] = getKDJfdMaps(model.WEEK, len(ks.KdjWk))
-		//m["BuyMonth"], m["SellMonth"] = getKDJfdMaps(model.MONTH, len(ks.KdjMo))
+		//rm["BuyDay"], rm["SellDay"] = getKDJfdMaps(model.DAY, len(ks.KdjDy))
+		//rm["BuyWeek"], rm["SellWeek"] = getKDJfdMaps(model.WEEK, len(ks.KdjWk))
+		//rm["BuyMonth"], rm["SellMonth"] = getKDJfdMaps(model.MONTH, len(ks.KdjMo))
 	}
 	return r
 }
 
-func cvtKdjSeries(ks *KdjSeries) (day, week, month map[string][]float64) {
+func cvtKdjSeries(ks *rm.KdjSeries) (day, week, month map[string][]float64) {
 	day = make(map[string][]float64)
 	day["K"] = make([]float64, len(ks.KdjDy))
 	day["D"] = make([]float64, len(ks.KdjDy))
@@ -340,58 +312,58 @@ func kdjScoreMapper(row []interface{}) error {
 
 //figure out the format of row
 func interpRow(row []interface{}) {
-	log.Printf("kdjScoreMapper param type: %+v, row len: %d", reflect.TypeOf(row), len(row))
+	logr.Debugf("kdjScoreMapper param type: %+v, row len: %d", reflect.TypeOf(row), len(row))
 	for i, ie := range row {
-		log.Printf("row[%d] type: %+v, value: %+v", i, reflect.TypeOf(ie), ie)
+		logr.Printf("row[%d] type: %+v, value: %+v", i, reflect.TypeOf(ie), ie)
 		switch ie.(type) {
 		case []interface{}:
 			a := ie.([]interface{})
-			log.Printf("row[%d] is type []interface{}, size: %d, iterating the array:", i, len(a))
+			logr.Debugf("row[%d] is type []interface{}, size: %d, iterating the array:", i, len(a))
 			for j, ia := range a {
-				log.Printf("a[%d] is type %+v", j, reflect.TypeOf(ia))
+				logr.Debugf("a[%d] is type %+v", j, reflect.TypeOf(ia))
 				// more to be explored...
 				switch ia.(type) {
 				case map[interface{}]interface{}:
 					m := ia.(map[interface{}]interface{})
-					log.Printf("a[%d] map size: %d, iterating the map:", j, len(m))
+					logr.Debugf("a[%d] map size: %d, iterating the map:", j, len(m))
 					for k, v := range m {
-						log.Printf("k: %+v (%+v)\tv: %+v (%+v)", k, reflect.TypeOf(k), v, reflect.TypeOf(v))
+						logr.Debugf("k: %+v (%+v)\tv: %+v (%+v)", k, reflect.TypeOf(k), v, reflect.TypeOf(v))
 					}
 				}
 			}
 		case map[interface{}]interface{}:
 			m := ie.(map[interface{}]interface{})
-			log.Printf("row[%d] map size: %d, iterating the map:", i, len(m))
+			logr.Debugf("row[%d] map size: %d, iterating the map:", i, len(m))
 			for k, v := range m {
-				log.Printf("k: %+v\tv: %+v", k, v)
+				logr.Debugf("k: %+v\tv: %+v", k, v)
 			}
 		}
 	}
 }
 
 func interpIntf(id string, intf interface{}) {
-	log.Printf("%s intf type: %+v,  value: %+v", id, reflect.TypeOf(intf), intf)
+	logr.Debugf("%s intf type: %+v,  value: %+v", id, reflect.TypeOf(intf), intf)
 	switch intf.(type) {
 	case []interface{}:
 		a := intf.([]interface{})
-		log.Printf("%s intf is type []interface{}, size: %d, iterating the array:", id, len(a))
+		logr.Debugf("%s intf is type []interface{}, size: %d, iterating the array:", id, len(a))
 		for j, ia := range a {
-			log.Printf("%s[%d] is type %+v: %+v", id, j, reflect.TypeOf(ia), ia)
+			logr.Debugf("%s[%d] is type %+v: %+v", id, j, reflect.TypeOf(ia), ia)
 			// more to be explored...
 			switch ia.(type) {
 			case map[interface{}]interface{}:
 				m := ia.(map[interface{}]interface{})
-				log.Printf("%s[%d] map size: %d, iterating the map:", id, j, len(m))
+				logr.Debugf("%s[%d] map size: %d, iterating the map:", id, j, len(m))
 				for k, v := range m {
-					log.Printf("%s,  k: %+v (%+v)\tv: %+v (%+v)", id, k, reflect.TypeOf(k), v, reflect.TypeOf(v))
+					logr.Debugf("%s,  k: %+v (%+v)\tv: %+v (%+v)", id, k, reflect.TypeOf(k), v, reflect.TypeOf(v))
 				}
 			}
 		}
 	case map[interface{}]interface{}:
 		m := intf.(map[interface{}]interface{})
-		log.Printf("%s intf map size: %d, iterating the map:", id, len(m))
+		logr.Debugf("%s intf map size: %d, iterating the map:", id, len(m))
 		for k, v := range m {
-			log.Printf("%s, k(%+v): %+v\tv(%+v): %+v", id, reflect.TypeOf(k), k, reflect.TypeOf(v), v)
+			logr.Debugf("%s, k(%+v): %+v\tv(%+v): %+v", id, reflect.TypeOf(k), k, reflect.TypeOf(v), v)
 		}
 	}
 }
