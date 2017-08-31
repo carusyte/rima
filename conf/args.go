@@ -27,9 +27,9 @@ func init() {
 	}
 	err = v.Unmarshal(&Args) // Find and read the config file
 	if err != nil {
-		logrus.Infof("config file error: %s", err)
+		logrus.Errorf("config file error: %s", err)
 	} else {
-		logrus.Infof("Configuration: %+v", Args)
+		logrus.Debugf("Configuration: %+v", Args)
 		//v.WatchConfig()
 
 		var level logrus.Level
