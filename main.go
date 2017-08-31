@@ -7,8 +7,6 @@ import (
 	"log"
 	"github.com/carusyte/rima/rsec"
 	"github.com/carusyte/rima/tes"
-	"github.com/sirupsen/logrus"
-	"github.com/carusyte/rima/conf"
 )
 
 func main() {
