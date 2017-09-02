@@ -257,7 +257,15 @@ func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 	return fmt.Sprintf("%s-%s-%d", cytp, bysl, num)
 }
 
-func kdjScoreMapper(row []interface{}) error {
+func kdjScoreMapper(row []interface{}) (e error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logr.Errorf("kdjScoreMapper.recover() is not nil: %+v", r)
+			if er, ok := r.(error); ok {
+				e = errors.Wrapf(er, "failed to execute kdjScoreMapper(), %+v", row)
+			}
+		}
+	}()
 	s := .0
 	//interpRow(row)
 	m := row[0].([]interface{})[0].(map[interface{}]interface{})
@@ -398,7 +406,15 @@ func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJf
 	return s, nil
 }
 
-func kdjScoreReducer(x, y interface{}) (interface{}, error) {
+func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logr.Errorf("kdjScoreReducer.recover() is not nil: %+v", r)
+			if er, ok := r.(error); ok {
+				e = errors.Wrapf(er, "failed to execute kdjScoreReducer(), x:%+v, y:%+v", x, y)
+			}
+		}
+	}()
 	//interpIntf("x", x)
 	//interpIntf("y", y)
 	var r []interface{}
