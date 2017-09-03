@@ -26,7 +26,7 @@ func main() {
 		Read(file.Txt("/etc/yum.repos.d/CentOS-Base.repo", 2)). // read a txt file and partitioned to 2 shards
 		Map("tokenize", mapper.Tokenize). // invoke the registered "tokenize" mapper function.
 		Map("addOne", mapper.AppendOne).  // invoke the registered "addOne" mapper function.
-		ReduceByKey("sum", reducer.Sum). // invoke the registered "sum" reducer function.
+		ReduceByKey("sum", reducer.SumFloat64). // invoke the registered "sum" reducer function.
 		Sort("sortBySum", flow.OrderBy(2, true)).
 		Top("top5", 5, flow.OrderBy(2, false)).
 		Printlnf("%s\t%d")
