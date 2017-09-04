@@ -269,30 +269,40 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	s := .0
 	//interpRow(row)
 	m := row[0].([]interface{})[0].(map[string]interface{})
+	rowId := m["RowId"].(string)
 	//in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
-	logr.Debugf("kdj score mapper receive row len: %d, row[0] len: %d,"+
-		" parse map from input: %+v", len(row), len(row[0].([]interface{})), m)
+	logr.Debugf("%s kdj score mapper receive row len: %d, row[0] len: %d,"+
+		" parse map from input: %+v", rowId, len(row), len(row[0].([]interface{})), m)
 	buyDay, sellDay, e := getKDJfdViews(model.DAY, int(gio.ToInt64(m["DayLen"])))
+	logr.Debugf("%s day len: %+v, buys: %d, sells: %d, error: %+v", rowId, m["DayLen"],
+		len(buyDay), len(sellDay), e)
 	if e != nil {
 		return e
 	}
 	sdy, e := calcKdjScore(m["KdjDay"].(map[string]interface{}), buyDay, sellDay)
+	logr.Debugf("%s Day Score: %.2f, error: %+v", rowId, sdy, e)
 	if e != nil {
 		return e
 	}
 	buyWeek, sellWeek, e := getKDJfdViews(model.WEEK, int(gio.ToInt64(m["WeekLen"])))
+	logr.Debugf("%s week len: %+v, buys: %d, sells: %d, error: %+v", rowId, m["WeekLen"],
+		len(buyWeek), len(sellWeek), e)
 	if e != nil {
 		return e
 	}
 	swk, e := calcKdjScore(m["KdjWeek"].(map[string]interface{}), buyWeek, sellWeek)
+	logr.Debugf("%s Week Score: %.2f, error: %+v", rowId, swk, e)
 	if e != nil {
 		return e
 	}
 	buyMonth, sellMonth, e := getKDJfdViews(model.MONTH, int(gio.ToInt64(m["MonthLen"])))
+	logr.Debugf("%s month len: %+v, buys: %d, sells: %d, error: %+v", rowId, m["MonthLen"],
+		len(buyMonth), len(sellMonth), e)
 	if e != nil {
 		return e
 	}
 	smo, e := calcKdjScore(m["KdjMonth"].(map[string]interface{}), buyMonth, sellMonth)
+	logr.Debugf("%s Month Score: %.2f, error: %+v", rowId, smo, e)
 	if e != nil {
 		return e
 	}
@@ -305,7 +315,6 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	s /= wgtDay + wgtWeek + wgtMonth
 	s = math.Min(100, math.Max(0, s))
 
-	rowId := m["RowId"].(string)
 	//gio.Emit([]float64{s})
 	logr.Debugf("%s calculated score: %f, emitting", rowId, s)
 	gio.Emit(rowId, s)
