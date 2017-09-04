@@ -3,6 +3,7 @@ package conf
 import (
 	"github.com/spf13/viper"
 	"github.com/sirupsen/logrus"
+	"os"
 )
 
 var Args Arguments
@@ -48,6 +49,7 @@ func init() {
 			level = logrus.PanicLevel
 		}
 		logrus.SetLevel(level)
+		logrus.SetOutput(os.Stderr)
 	}
 }
 

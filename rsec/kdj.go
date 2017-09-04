@@ -17,6 +17,7 @@ import (
 	"github.com/carusyte/rima/db"
 	"github.com/carusyte/rima/cache"
 	logr "github.com/sirupsen/logrus"
+	"strings"
 )
 
 var (
@@ -171,15 +172,19 @@ func getKDJfdViews(cytp model.CYTP, num int) (buy, sell []*model.KDJfdView, e er
 		n := num + i
 		if n >= 2 {
 			nbuy, e := kdjFdFrmCb(cytp, "BY", n)
-			if e != nil {
+			if e != nil && !strings.Contains(e.Error(), "key not found") {
 				return nil, nil, e
 			}
-			buy = append(buy, nbuy...)
+			if nbuy != nil && len(nbuy) > 0 {
+				buy = append(buy, nbuy...)
+			}
 			nsell, e := kdjFdFrmCb(cytp, "SL", n)
-			if e != nil {
+			if e != nil && !strings.Contains(e.Error(), "key not found") {
 				return nil, nil, e
 			}
-			sell = append(sell, nsell...)
+			if nsell != nil && len(nsell) > 0 {
+				sell = append(sell, nsell...)
+			}
 		}
 	}
 	logr.Debugf("getting kdj fd views, cytp: %s, num: %d,\n buys:%+v,\n sells:%+v", cytp, num, len(buy), len(sell))
