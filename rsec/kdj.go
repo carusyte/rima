@@ -268,7 +268,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	}()
 	s := .0
 	//interpRow(row)
-	m := row[0].([]interface{})[0].(map[interface{}]interface{})
+	m := row[0].([]interface{})[0].(map[string]interface{})
 	//in := row[0].([]interface{})[0].(*KdjScoreCalcInput)
 	logr.Debugf("kdj score mapper receive row len: %d, row[0] len: %d,"+
 		" parse map from input: %+v", len(row), len(row[0].([]interface{})), m)
@@ -276,7 +276,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	if e != nil {
 		return e
 	}
-	sdy, e := calcKdjScore(m["KdjDay"].(map[interface{}]interface{}), buyDay, sellDay)
+	sdy, e := calcKdjScore(m["KdjDay"].(map[string]interface{}), buyDay, sellDay)
 	if e != nil {
 		return e
 	}
@@ -284,7 +284,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	if e != nil {
 		return e
 	}
-	swk, e := calcKdjScore(m["KdjWeek"].(map[interface{}]interface{}), buyWeek, sellWeek)
+	swk, e := calcKdjScore(m["KdjWeek"].(map[string]interface{}), buyWeek, sellWeek)
 	if e != nil {
 		return e
 	}
@@ -292,7 +292,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	if e != nil {
 		return e
 	}
-	smo, e := calcKdjScore(m["KdjMonth"].(map[interface{}]interface{}), buyMonth, sellMonth)
+	smo, e := calcKdjScore(m["KdjMonth"].(map[string]interface{}), buyMonth, sellMonth)
 	if e != nil {
 		return e
 	}
@@ -372,7 +372,7 @@ func interpIntf(id string, intf interface{}) {
 	}
 }
 
-func calcKdjScore(kdj map[interface{}]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
+func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
 	logr.Debugf("kdj score calculation, input:%+v, buy len:%d, sell len:%d", kdj, len(buyfds), len(sellfds))
 	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
@@ -446,7 +446,7 @@ func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
 
 // Evaluates KDJ DEVIA indicator against pruned feature data, returns the following result:
 // Ratio of high DEVIA, ratio of positive DEVIA, mean of positive DEVIA, and DEVIA indicator, ranging from 0 to 1
-func calcKdjDI(hist map[interface{}]interface{}, fdvs []*model.KDJfdView) (hdr, pdr, mpd, di float64, e error) {
+func calcKdjDI(hist map[string]interface{}, fdvs []*model.KDJfdView) (hdr, pdr, mpd, di float64, e error) {
 	defer func() {
 		if r := recover(); r != nil {
 			logr.Errorf("calcKdjDI.recover() is not nil: %+v", r)
