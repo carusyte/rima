@@ -439,9 +439,11 @@ func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView
 	det["bhdr"] = bhdr
 	det["bpdr"] = bpdr
 	det["bmpd"] = bmpd
+	det["bdi"] = bdi
 	det["shdr"] = shdr
 	det["spdr"] = spdr
 	det["smpd"] = smpd
+	det["sdi"] = sdi
 	logr.Debugf("kdj score calculation, bdi:%f, sdi:%f, score:%f", bdi, sdi, s)
 	return s, det, nil
 }
@@ -471,7 +473,9 @@ func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
 		}
 	case []map[string]interface{}:
 		r = make([]interface{}, 0, 16)
-		r = append(r, x.([]map[string]interface{})...)
+		for _, ix := range x.([]map[string]interface{}) {
+			r = append(r, ix)
+		}
 	case map[string]interface{}:
 		r = make([]interface{}, 0, 16)
 		r = append(r, x)
@@ -486,7 +490,9 @@ func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
 			r = append(r, iy)
 		}
 	case []map[string]interface{}:
-		r = append(r, y.([]map[string]interface{})...)
+		for _, iy := range y.([]map[string]interface{}) {
+			r = append(r, iy)
+		}
 	case map[string]interface{}:
 		r = append(r, y)
 	}
