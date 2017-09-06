@@ -42,6 +42,7 @@ func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply 
 
 //Score by assessing the historical data against the sampled feature data.
 func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
+	//TODO consider making it an asynchronous job
 	//call gleam api to map and reduce
 	logr.Infof("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
@@ -54,13 +55,16 @@ func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, 0, 16)
 	rep.RowIds = make([]string, 0, 16)
+	rep.Detail = make([]map[string]interface{}, 0, 16)
 	f := flow.New("KDJ Score Calculation").Slices(mapSource).RoundRobin("rr", int(shard)).
 		Map("kdjScorer", KdjScorer).
 		ReduceBy("kdjScoreCollector", KdjScoreCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
 		logr.Debugf("Output Row: %+v", r)
 		rep.RowIds = append(rep.RowIds, r.K[0].(string))
-		rep.Scores = append(rep.Scores, r.V[0].(float64))
+		m := r.V[0].(map[string]interface{})
+		rep.Scores = append(rep.Scores, m["score"].(float64))
+		rep.Detail = append(rep.Detail, m)
 		return nil
 	})
 
@@ -284,7 +288,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	if e != nil {
 		return e
 	}
-	sdy, e := calcKdjScore(m["KdjDay"].(map[string]interface{}), buyDay, sellDay)
+	sdy, detDy, e := calcKdjScore(m["KdjDay"].(map[string]interface{}), buyDay, sellDay)
 	logr.Debugf("%s Day Score: %.2f, error: %+v", rowId, sdy, e)
 	if e != nil {
 		return e
@@ -295,7 +299,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	if e != nil {
 		return e
 	}
-	swk, e := calcKdjScore(m["KdjWeek"].(map[string]interface{}), buyWeek, sellWeek)
+	swk, detWk, e := calcKdjScore(m["KdjWeek"].(map[string]interface{}), buyWeek, sellWeek)
 	logr.Debugf("%s Week Score: %.2f, error: %+v", rowId, swk, e)
 	if e != nil {
 		return e
@@ -306,7 +310,7 @@ func kdjScoreMapper(row []interface{}) (e error) {
 	if e != nil {
 		return e
 	}
-	smo, e := calcKdjScore(m["KdjMonth"].(map[string]interface{}), buyMonth, sellMonth)
+	smo, detMo, e := calcKdjScore(m["KdjMonth"].(map[string]interface{}), buyMonth, sellMonth)
 	logr.Debugf("%s Month Score: %.2f, error: %+v", rowId, smo, e)
 	if e != nil {
 		return e
@@ -322,10 +326,25 @@ func kdjScoreMapper(row []interface{}) (e error) {
 
 	//gio.Emit([]float64{s})
 	logr.Debugf("%s calculated score: %f, emitting", rowId, s)
-	gio.Emit(rowId, s)
+	gio.Emit(rowId, mergeKdjScoreMap(s, detDy, detWk, detMo))
 	//gio.Emit("KDJS", 2.13)
 
 	return nil
+}
+
+func mergeKdjScoreMap(score float64, detDy map[string]interface{}, detWk map[string]interface{}, detMo map[string]interface{}) (ksMap map[string]interface{}) {
+	ksMap = make(map[string]interface{})
+	ksMap["score"] = score
+	for k, v := range detDy {
+		ksMap[string(model.DAY)+"."+k] = v
+	}
+	for k, v := range detWk {
+		ksMap[string(model.WEEK)+"."+k] = v
+	}
+	for k, v := range detMo {
+		ksMap[string(model.MONTH)+"."+k] = v
+	}
+	return
 }
 
 //figure out the format of row
@@ -386,17 +405,17 @@ func interpIntf(id string, intf interface{}) {
 	}
 }
 
-func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, e error) {
+func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView) (s float64, det map[string]interface{}, e error) {
 	logr.Debugf("kdj score calculation, input:%+v, buy len:%d, sell len:%d", kdj, len(buyfds), len(sellfds))
-	_, _, _, bdi, e := calcKdjDI(kdj, buyfds)
+	bhdr, bpdr, bmpd, bdi, e := calcKdjDI(kdj, buyfds)
 	//val = fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, bdi)
 	if e != nil {
-		return 0, e
+		return 0, nil, e
 	}
-	_, _, _, sdi, e := calcKdjDI(kdj, sellfds)
+	shdr, spdr, smpd, sdi, e := calcKdjDI(kdj, sellfds)
 	//val += fmt.Sprintf("%.2f/%.2f/%.2f/%.2f\n", hdr, pdr, mpd, sdi)
 	if e != nil {
-		return 0, e
+		return 0, nil, e
 	}
 	dirat := .0
 	s = .0
@@ -416,8 +435,15 @@ func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView
 	} else if bdi >= 0.81 {
 		s += 70
 	}
+	det = make(map[string]interface{})
+	det["bhdr"] = bhdr
+	det["bpdr"] = bpdr
+	det["bmpd"] = bmpd
+	det["shdr"] = shdr
+	det["spdr"] = spdr
+	det["smpd"] = smpd
 	logr.Debugf("kdj score calculation, bdi:%f, sdi:%f, score:%f", bdi, sdi, s)
-	return s, nil
+	return s, det, nil
 }
 
 func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
@@ -443,6 +469,12 @@ func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
 		for _, ix := range x.([]float64) {
 			r = append(r, ix)
 		}
+	case []map[string]interface{}:
+		r = make([]interface{}, 0, 16)
+		r = append(r, x.([]map[string]interface{})...)
+	case map[string]interface{}:
+		r = make([]interface{}, 0, 16)
+		r = append(r, x)
 	}
 	switch y.(type) {
 	case float64:
@@ -453,6 +485,10 @@ func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
 		for _, iy := range y.([]float64) {
 			r = append(r, iy)
 		}
+	case []map[string]interface{}:
+		r = append(r, y.([]map[string]interface{})...)
+	case map[string]interface{}:
+		r = append(r, y)
 	}
 	logr.Debugf("final result in reducer: %+v, %+v", reflect.TypeOf(r), r)
 	return r, nil

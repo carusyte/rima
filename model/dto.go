@@ -22,6 +22,7 @@ type KdjScoreCalcInput struct {
 type KdjScoreRep struct {
 	RowIds []string
 	Scores []float64
+	Detail []map[string]interface{}
 }
 
 type KdjScore struct {
