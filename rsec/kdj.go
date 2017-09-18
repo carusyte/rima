@@ -51,6 +51,7 @@ func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	if e != nil {
 		return e
 	}
+	shard = math.Max(1, shard)
 	logr.Infof("#shard: %.0f", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, 0, 16)
