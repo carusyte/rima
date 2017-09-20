@@ -385,12 +385,12 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		}
 	}()
 	m := row[0].([]interface{})[0].(map[string]interface{})
-	kdjs := m["KDJs"].([]map[string]interface{})
-	f1 := kdjs[0]
+	kdjs := m["KDJs"].([]interface{})
+	f1 := kdjs[0].(map[string]interface{})
 	prec := gio.ToFloat64(f1["Prec"])
 	cdd := make([]interface{}, 0, 16)
 	for i := 1; i < len(kdjs); i++ {
-		f2 := kdjs[i]
+		f2 := kdjs[i].(map[string]interface{})
 		d, e := CalcKdjDevi(f1["K"], f1["D"], f1["J"], f2["K"], f2["D"], f2["J"])
 		if e != nil {
 			logr.Errorf("kdjPruneMapper failed\n%+v", e)
