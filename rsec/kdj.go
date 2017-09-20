@@ -106,7 +106,11 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//TODO call gleam api to map and reduce
 	mapSource := getKdjPruneMapSource(fdvs, prec)
-	shard := float64(len(mapSource))
+	shard := 4.0
+	shard, e = stats.Round(math.Pow(math.Log(float64(len(mapSource))), math.SqrtPi*math.Sqrt2), 0)
+	if e != nil {
+		return rfdvs, e
+	}
 	shard = math.Max(1, shard)
 	logr.Infof("#shard: %.0f", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
@@ -175,7 +179,7 @@ func getKdjPruneMapSource(fdvs []*model.KDJfdView, prec float64) (r [][]interfac
 		//m["SmpNum"] = v.SmpNum
 		for j := 0; j < len(kdjs); j++ {
 			kdjs[j] = make(map[string]interface{})
-			kdjs[j]["Seq"] = j+i
+			kdjs[j]["Seq"] = j + i
 			kdjs[j]["Prec"] = prec
 			kdjs[j]["K"] = fdvs[j+i].K
 			kdjs[j]["D"] = fdvs[j+i].D
