@@ -173,13 +173,13 @@ func getKdjPruneMapSource(fdvs []*model.KDJfdView, prec float64) (r [][]interfac
 		m["KDJs"] = kdjs
 		//m["FdNum"] = v.FdNum
 		//m["SmpNum"] = v.SmpNum
-		for j := i; j < len(fdvs); j++ {
+		for j := 0; j < len(kdjs); j++ {
 			kdjs[j] = make(map[string]interface{})
-			kdjs[j]["Seq"] = j
+			kdjs[j]["Seq"] = j+i
 			kdjs[j]["Prec"] = prec
-			kdjs[j]["K"] = fdvs[j].K
-			kdjs[j]["D"] = fdvs[j].D
-			kdjs[j]["J"] = fdvs[j].J
+			kdjs[j]["K"] = fdvs[j+i].K
+			kdjs[j]["D"] = fdvs[j+i].D
+			kdjs[j]["J"] = fdvs[j+i].J
 		}
 	}
 	return r
