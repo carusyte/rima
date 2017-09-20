@@ -11,6 +11,7 @@ var Args Arguments
 type Arguments struct {
 	CouchbaseServers string `mapstructure:"couchbase_servers"`
 	LogLevel         string `mapstructure:"log_level"`
+	Shard            int    `mapstructure:"shard"`
 }
 
 func init() {
@@ -55,4 +56,5 @@ func init() {
 
 func setDefaults() {
 	Args.LogLevel = "info"
+	Args.Shard = 20
 }

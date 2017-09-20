@@ -19,6 +19,7 @@ import (
 	logr "github.com/sirupsen/logrus"
 	"strings"
 	"strconv"
+	"github.com/carusyte/rima/conf"
 )
 
 var (
@@ -89,6 +90,7 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		len(req.Data), req.Prec, req.Pass)
 	fdvs := req.Data
 	for p := 0; p < req.Pass; p++ {
+		logr.Debugf("%s begin prune pass %d, len: %d", req.ID, p+1, len(fdvs))
 		stp := time.Now()
 		bfc := len(fdvs)
 		fdvs, e = passKdjFeatDatPrune(fdvs, req.Prec)
@@ -106,15 +108,9 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//TODO call gleam api to map and reduce
 	mapSource := getKdjPruneMapSource(fdvs, prec)
-	shard := 4.0
-	shard, e = stats.Round(math.Pow(math.Log(float64(len(mapSource))), math.SqrtPi*math.Sqrt2), 0)
-	if e != nil {
-		return rfdvs, e
-	}
-	shard = math.Max(1, shard)
-	logr.Infof("#shard: %.0f", shard)
+	logr.Debugf("#shard: %d", conf.Args.Shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
-	f := flow.New("KDJ Pruning").Slices(mapSource).RoundRobin("rr", int(shard)).
+	f := flow.New("KDJ Pruning").Slices(mapSource).RoundRobin("rr", conf.Args.Shard).
 		Map("kdjPruner", kdjPruner).
 		ReduceBy("kdjPruneCollector", kdjPruneCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
@@ -386,6 +382,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	}()
 	m := row[0].([]interface{})[0].(map[string]interface{})
 	kdjs := m["KDJs"].([]interface{})
+	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0].(map[string]interface{})
 	prec := gio.ToFloat64(f1["Prec"])
 	cdd := make([]interface{}, 0, 16)
@@ -600,6 +597,8 @@ func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
 			}
 		}
 	}()
+	interpIntf("x",x)
+	interpIntf("y",y)
 	xm := x.(map[string]interface{})
 	ym := y.(map[string]interface{})
 	if len(xm) > len(ym) {
