@@ -13,20 +13,19 @@ type KdjSeries struct {
 	KdjDy, KdjWk, KdjMo []*model.Indicator
 }
 
-type KdjScoreCalcInput struct {
-	*KdjSeries
-	WgtDay, WgtWeek, WgtMonth                   float64
-	BuyDy, BuyWk, BuyMo, SellDy, SellWk, SellMo []*model.KDJfdView
-}
-
 type KdjScoreRep struct {
 	RowIds []string
 	Scores []float64
 	Detail []map[string]interface{}
 }
 
-type KdjScore struct {
-	Score                             float64
-	BuyHdr, BuyPdr, BuyMpd, BuyDi     float64
-	SellHdr, SellPdr, SellMpd, SellDi float64
+type KdjPruneReq struct {
+	ID   string
+	Prec float64
+	Pass int
+	Data []*model.KDJfdView
+}
+
+type KdjPruneRep struct {
+	Data []*model.KDJfdView
 }

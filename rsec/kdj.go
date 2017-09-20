@@ -18,13 +18,16 @@ import (
 	"github.com/carusyte/rima/cache"
 	logr "github.com/sirupsen/logrus"
 	"strings"
+	"strconv"
 )
 
 var (
 	kdjFdMap          = make(map[string][]*model.KDJfdView)
 	lock              = sync.RWMutex{}
-	KdjScorer         = gio.RegisterMapper(kdjScoreMapper)
-	KdjScoreCollector = gio.RegisterReducer(kdjScoreReducer)
+	kdjScorer         = gio.RegisterMapper(kdjScoreMapper)
+	kdjScoreCollector = gio.RegisterReducer(kdjScoreReducer)
+	kdjPruner         = gio.RegisterMapper(kdjPruneMapper)
+	kdjPruneCollector = gio.RegisterReducer(kdjPruneReducer)
 )
 
 type IndcScorer struct{}
@@ -58,8 +61,8 @@ func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	rep.RowIds = make([]string, 0, 16)
 	rep.Detail = make([]map[string]interface{}, 0, 16)
 	f := flow.New("KDJ Score Calculation").Slices(mapSource).RoundRobin("rr", int(shard)).
-		Map("kdjScorer", KdjScorer).
-		ReduceBy("kdjScoreCollector", KdjScoreCollector, sortOption).
+		Map("kdjScorer", kdjScorer).
+		ReduceBy("kdjScoreCollector", kdjScoreCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
 		logr.Debugf("Output Row: %+v", r)
 		rep.RowIds = append(rep.RowIds, r.K[0].(string))
@@ -79,6 +82,107 @@ func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	}
 	logr.Infof("IndcScorer.ScoreKdj finished, score size: %d", len(rep.Scores))
 	return nil
+}
+
+func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
+	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, pass: %d",
+		len(req.Data), req.Prec, req.Pass)
+	fdvs := req.Data
+	for p := 0; p < req.Pass; p++ {
+		stp := time.Now()
+		bfc := len(fdvs)
+		fdvs, e = passKdjFeatDatPrune(fdvs, req.Prec)
+		if e != nil {
+			return e
+		}
+		prate := float64(bfc-len(fdvs)) / float64(bfc) * 100
+		logr.Debugf("%s pass %d, before: %d, after: %d, rate: %.2f%% time: %.2f",
+			req.ID, p+1, bfc, len(fdvs), prate, time.Since(stp).Seconds())
+	}
+	logr.Infof("IndcScorer.PruneKdj finished, pruned size: %d", len(rep.Data))
+	return nil
+}
+
+func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
+	//TODO call gleam api to map and reduce
+	mapSource := getKdjPruneMapSource(fdvs, prec)
+	shard := float64(len(mapSource))
+	shard = math.Max(1, shard)
+	logr.Infof("#shard: %.0f", shard)
+	sortOption := (&flow.SortOption{}).By(1, true)
+	f := flow.New("KDJ Pruning").Slices(mapSource).RoundRobin("rr", int(shard)).
+		Map("kdjPruner", kdjPruner).
+		ReduceBy("kdjPruneCollector", kdjPruneCollector, sortOption).
+		OutputRow(func(r *util.Row) error {
+		//Output Row func begin
+		logr.Debugf("Output Row: %+v", r)
+		set := make(map[int]bool)
+		m := r.V[0].(map[string]interface{})
+		if len(m) != len(fdvs)-1 {
+			e = errors.Errorf("result map not matched: %d : %d", len(m), len(fdvs)-1)
+			logr.Error(e)
+			return e
+		}
+		for i := 0; i < len(m); i++ {
+			f1 := fdvs[i]
+			if _, exists := set[i]; exists {
+				continue
+			}
+			rfdvs = append(rfdvs, f1)
+			cdd := m[strconv.Itoa(i)].([]interface{})
+			if len(cdd) == 0 {
+				continue
+			}
+			for _, c := range cdd {
+				ic := c.(int)
+				if _, exists := set[ic]; exists {
+					continue
+				}
+				f2 := fdvs[ic]
+				for j := 0; j < f1.SmpNum; j++ {
+					ffn1 := float64(f1.FdNum)
+					ffn2 := float64(f2.FdNum)
+					f1.K[j] = (f1.K[j]*ffn1 + f2.K[j]*ffn2) / (ffn1 + ffn2)
+					f1.D[j] = (f1.D[j]*ffn1 + f2.D[j]*ffn2) / (ffn1 + ffn2)
+					f1.J[j] = (f1.J[j]*ffn1 + f2.J[j]*ffn2) / (ffn1 + ffn2)
+					f1.FdNum += f2.FdNum
+				}
+				set[ic] = true
+			}
+		}
+		return nil
+	})
+	if len(fdvs) >= 30 {
+		option := distributed.Option().SetDataCenter("defaultDataCenter").
+			SetMaster("localhost:45326")
+		option.Rack = "defaultRack"
+		f.Run(option)
+	} else {
+		f.Run()
+	}
+	return
+}
+
+func getKdjPruneMapSource(fdvs []*model.KDJfdView, prec float64) (r [][]interface{}) {
+	r = make([][]interface{}, len(fdvs)-1)
+	for i := 0; i < len(fdvs)-1; i++ {
+		r[i] = make([]interface{}, 1)
+		m := make(map[string]interface{})
+		r[i][0] = m
+		kdjs := make([]map[string]interface{}, len(fdvs)-i)
+		m["KDJs"] = kdjs
+		//m["FdNum"] = v.FdNum
+		//m["SmpNum"] = v.SmpNum
+		for j := i; j < len(fdvs); j++ {
+			kdjs[j] = make(map[string]interface{})
+			kdjs[j]["Seq"] = j
+			kdjs[j]["Prec"] = prec
+			kdjs[j]["K"] = fdvs[j].K
+			kdjs[j]["D"] = fdvs[j].D
+			kdjs[j]["J"] = fdvs[j].J
+		}
+	}
+	return r
 }
 
 func getKdjMapSource(req *rm.KdjScoreReq) [][]interface{} {
@@ -214,7 +318,7 @@ func kdjFdFrmDb(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, erro
 	rows, e := db.Ora().Query(db.SQL_KDJ_FEAT_DAT, cytp, bysl, num)
 	if e != nil {
 		if "sql: no rows in result set" == e.Error() {
-			//FIXME what's the corresponding error message in Oracle?
+			//TODO what's the corresponding error message in Oracle?
 			fdvs := make([]*model.KDJfdView, 0)
 			kdjFdMap[mk] = fdvs
 			return fdvs, nil
@@ -265,6 +369,40 @@ func newKDJfdView(fid, bysl string, cytp model.CYTP, smpNum, fdNum int, weight f
 
 func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 	return fmt.Sprintf("%s-%s-%d", cytp, bysl, num)
+}
+
+func kdjPruneMapper(row []interface{}) (e error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v", r)
+			if er, ok := r.(error); ok {
+				e = errors.Wrapf(er, "failed to execute kdjPruneMapper(), %+v", row)
+			}
+		}
+	}()
+	m := row[0].([]interface{})[0].(map[string]interface{})
+	kdjs := m["KDJs"].([]map[string]interface{})
+	f1 := kdjs[0]
+	prec := gio.ToFloat64(f1["Prec"])
+	cdd := make([]interface{}, 0, 16)
+	for i := 1; i < len(kdjs); i++ {
+		f2 := kdjs[i]
+		d, e := CalcKdjDevi(f1["K"], f1["D"], f1["J"], f2["K"], f2["D"], f2["J"])
+		if e != nil {
+			logr.Errorf("kdjPruneMapper failed\n%+v", e)
+			return e
+		}
+		if d >= prec {
+			cdd = append(cdd, f2["Seq"])
+		}
+	}
+	//logr.Debugf("%s-%s-%d found %d similar", fdk.Cytp, fdk.Bysl, fdk.SmpNum, len(pend))
+	logr.Debugf(" %+v matched seq: %+v", f1["Seq"], cdd)
+	r := map[string]interface{}{
+		gio.ToString(f1["Seq"]): cdd,
+	}
+	gio.Emit(f1["Seq"], r)
+	return nil
 }
 
 func kdjScoreMapper(row []interface{}) (e error) {
@@ -449,6 +587,30 @@ func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView
 	return s, det, nil
 }
 
+func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logr.Errorf("kdjPruneReducer.recover() is not nil: %+v", r)
+			if er, ok := r.(error); ok {
+				e = errors.Wrapf(er, "failed to execute kdjPruneReducer(), x:%+v, y:%+v", x, y)
+			}
+		}
+	}()
+	xm := x.(map[string]interface{})
+	ym := y.(map[string]interface{})
+	if len(xm) > len(ym) {
+		for k, v := range ym {
+			xm[k] = v
+		}
+		return xm, nil
+	} else {
+		for k, v := range xm {
+			ym[k] = v
+		}
+		return ym, nil
+	}
+}
+
 func kdjScoreReducer(x, y interface{}) (ret interface{}, e error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -589,7 +751,8 @@ func bestKdjDevi(ski, sdi, sji interface{}, tk, td, tj []float64) (float64, erro
 	}
 }
 
-func CalcKdjDevi(sk, sd, sj []interface{}, tk, td, tj []float64) (float64, error) {
+// arguments are either of type []interface{} or []float64
+func CalcKdjDevi(sk, sd, sj, tk, td, tj interface{}) (float64, error) {
 	kcc, e := Devi(sk, tk)
 	if e != nil {
 		return 0, errors.New(fmt.Sprintf("failed to calculate kcc: %+v, %+v", sk, tk))
@@ -606,13 +769,53 @@ func CalcKdjDevi(sk, sd, sj []interface{}, tk, td, tj []float64) (float64, error
 	return -0.001*math.Pow(scc, math.E) + 1, nil
 }
 
-func Devi(a []interface{}, b []float64) (float64, error) {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0, errors.New("invalid input")
+// a and b are usually of type []float64
+func Devi(ia, ib interface{}) (float64, error) {
+	if a, ok := ia.([]interface{}); ok {
+		if b, ok := ib.([]interface{}); ok {
+			if len(a) != len(b) || len(a) == 0 {
+				return 0, errors.New("invalid input")
+			}
+			s := .0
+			for i := 0; i < len(a); i++ {
+				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
+			}
+			return math.Pow(s/float64(len(a)), 0.5), nil
+		} else if b, ok := ib.([]float64); ok {
+			if len(a) != len(b) || len(a) == 0 {
+				return 0, errors.New("invalid input")
+			}
+			s := .0
+			for i := 0; i < len(a); i++ {
+				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
+			}
+			return math.Pow(s/float64(len(a)), 0.5), nil
+		} else {
+			return 0, errors.Errorf("unsupported type: %+v", reflect.TypeOf(ib))
+		}
+	} else if a, ok := ia.([]float64); ok {
+		if b, ok := ib.([]interface{}); ok {
+			if len(a) != len(b) || len(a) == 0 {
+				return 0, errors.New("invalid input")
+			}
+			s := .0
+			for i := 0; i < len(a); i++ {
+				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
+			}
+			return math.Pow(s/float64(len(a)), 0.5), nil
+		} else if b, ok := ib.([]float64); ok {
+			if len(a) != len(b) || len(a) == 0 {
+				return 0, errors.New("invalid input")
+			}
+			s := .0
+			for i := 0; i < len(a); i++ {
+				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
+			}
+			return math.Pow(s/float64(len(a)), 0.5), nil
+		} else {
+			return 0, errors.Errorf("unsupported type: %+v", reflect.TypeOf(ib))
+		}
+	} else {
+		return 0, errors.Errorf("unsupported type: %+v", reflect.TypeOf(ia))
 	}
-	s := .0
-	for i := 0; i < len(a); i++ {
-		s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
-	}
-	return math.Pow(s/float64(len(a)), 0.5), nil
 }
