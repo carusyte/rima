@@ -101,6 +101,7 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		logr.Debugf("%s pass %d, before: %d, after: %d, rate: %.2f%% time: %.2f",
 			req.ID, p+1, bfc, len(fdvs), prate, time.Since(stp).Seconds())
 	}
+	rep.Data = fdvs
 	logr.Infof("IndcScorer.PruneKdj finished, pruned size: %d", len(rep.Data))
 	return nil
 }
@@ -404,9 +405,8 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	}
 	//logr.Debugf("%s-%s-%d found %d similar", fdk.Cytp, fdk.Bysl, fdk.SmpNum, len(pend))
 	logr.Debugf("[%+v] matched seq: %+v", f1["Seq"], cdd)
-	r := map[string]interface{}{
-		fmt.Sprintf("%+v", f1["Seq"]): cdd,
-	}
+	r := make(map[string]interface{})
+	r[fmt.Sprintf("%+v", f1["Seq"])] = cdd
 	//should use the same key
 	gio.Emit(id, r)
 	return nil
@@ -603,8 +603,8 @@ func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
 			}
 		}
 	}()
-	interpIntf("x", x)
-	interpIntf("y", y)
+	//interpIntf("x", x)
+	//interpIntf("y", y)
 	xm := x.(map[string]interface{})
 	ym := y.(map[string]interface{})
 	if len(xm) > len(ym) {
