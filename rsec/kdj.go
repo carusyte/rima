@@ -137,7 +137,7 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 				continue
 			}
 			for _, c := range cdd {
-				ic := c.(int)
+				ic := int(gio.ToInt64(c))
 				if _, exists := set[ic]; exists {
 					continue
 				}
