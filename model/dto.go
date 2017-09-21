@@ -20,10 +20,10 @@ type KdjScoreRep struct {
 }
 
 type KdjPruneReq struct {
-	ID   string
-	Prec float64
-	Pass int
-	Data []*model.KDJfdView
+	ID        string
+	Prec      float64
+	PruneRate float64
+	Data      []*model.KDJfdView
 }
 
 type KdjPruneRep struct {

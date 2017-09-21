@@ -96,10 +96,10 @@ func getShard(size int) (int, error) {
 }
 
 func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
-	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, pass: %d",
-		len(req.Data), req.Prec, req.Pass)
+	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, prune rate: %d",
+		len(req.Data), req.Prec, req.PruneRate)
 	fdvs := req.Data
-	for p := 0; p < req.Pass; p++ {
+	for prate, p := 1.0, 0; prate > req.PruneRate; p++ {
 		id := fmt.Sprintf("%s:P%d", req.ID, p+1)
 		logr.Debugf("prune pass: [%s] len: %d", id, len(fdvs))
 		stp := time.Now()
@@ -108,9 +108,9 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		if e != nil {
 			return e
 		}
-		prate := float64(bfc-len(fdvs)) / float64(bfc) * 100
+		prate = float64(bfc-len(fdvs)) / float64(bfc)
 		logr.Debugf("%s pass %d, before: %d, after: %d, rate: %.2f%% time: %.2f",
-			req.ID, p+1, bfc, len(fdvs), prate, time.Since(stp).Seconds())
+			req.ID, p+1, bfc, len(fdvs), prate*100, time.Since(stp).Seconds())
 	}
 	rep.Data = fdvs
 	logr.Infof("IndcScorer.PruneKdj finished, pruned size: %d", len(rep.Data))
@@ -804,12 +804,12 @@ func CalcKdjDevi(sk, sd, sj, tk, td, tj interface{}) (float64, error) {
 
 // a and b are usually of type []float64
 func Devi(ia, ib interface{}) (float64, error) {
+	s := .0
 	if a, ok := ia.([]interface{}); ok {
 		if b, ok := ib.([]interface{}); ok {
 			if len(a) != len(b) || len(a) == 0 {
 				return 0, errors.New("invalid input")
 			}
-			s := .0
 			for i := 0; i < len(a); i++ {
 				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
 			}
@@ -818,7 +818,6 @@ func Devi(ia, ib interface{}) (float64, error) {
 			if len(a) != len(b) || len(a) == 0 {
 				return 0, errors.New("invalid input")
 			}
-			s := .0
 			for i := 0; i < len(a); i++ {
 				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
 			}
@@ -831,7 +830,6 @@ func Devi(ia, ib interface{}) (float64, error) {
 			if len(a) != len(b) || len(a) == 0 {
 				return 0, errors.New("invalid input")
 			}
-			s := .0
 			for i := 0; i < len(a); i++ {
 				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
 			}
@@ -840,7 +838,6 @@ func Devi(ia, ib interface{}) (float64, error) {
 			if len(a) != len(b) || len(a) == 0 {
 				return 0, errors.New("invalid input")
 			}
-			s := .0
 			for i := 0; i < len(a); i++ {
 				s += math.Pow(gio.ToFloat64(a[i])-gio.ToFloat64(b[i]), 2)
 			}
