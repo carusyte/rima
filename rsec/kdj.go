@@ -96,7 +96,15 @@ func getShard(size int) (int, error) {
 }
 
 func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
-	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, prune rate: %d",
+	defer func() {
+		if r := recover(); r != nil {
+			logr.Errorf("IndcScorer.PruneKdj() is not nil: %+v", r)
+			if er, ok := r.(error); ok {
+				e = errors.Wrapf(er, "failed to execute IndcScorer.PruneKdj(), req.ID=%s", req.ID)
+			}
+		}
+	}()
+	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, prune rate: %.2f",
 		len(req.Data), req.Prec, req.PruneRate)
 	fdvs := req.Data
 	for prate, p := 1.0, 0; prate > req.PruneRate; p++ {
