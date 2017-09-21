@@ -106,7 +106,7 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 }
 
 func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
-	//TODO call gleam api to map and reduce
+	//call gleam api to map and reduce
 	mapSource := getKdjPruneMapSource(fdvs, prec)
 	logr.Debugf("#shard: %d", conf.Args.Shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
@@ -398,9 +398,9 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		}
 	}
 	//logr.Debugf("%s-%s-%d found %d similar", fdk.Cytp, fdk.Bysl, fdk.SmpNum, len(pend))
-	logr.Debugf(" %+v matched seq: %+v", f1["Seq"], cdd)
+	logr.Debugf("[%+v] matched seq: %+v", f1["Seq"], cdd)
 	r := map[string]interface{}{
-		gio.ToString(f1["Seq"]): cdd,
+		fmt.Sprintf("%+v", f1["Seq"]): cdd,
 	}
 	gio.Emit(f1["Seq"], r)
 	return nil
@@ -597,8 +597,8 @@ func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
 			}
 		}
 	}()
-	interpIntf("x",x)
-	interpIntf("y",y)
+	interpIntf("x", x)
+	interpIntf("y", y)
 	xm := x.(map[string]interface{})
 	ym := y.(map[string]interface{})
 	if len(xm) > len(ym) {
