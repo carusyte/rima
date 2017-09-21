@@ -45,23 +45,21 @@ func (s *IndcScorer) InitKdjFeatDat(fdMap *map[string][]*model.KDJfdView, reply 
 }
 
 //Score by assessing the historical data against the sampled feature data.
-func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
+func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) (e error) {
 	//TODO consider making it an asynchronous job
 	//call gleam api to map and reduce
 	logr.Infof("IndcScorer.ScoreKdj called, input size: %d", len(req.Data))
 	mapSource := getKdjMapSource(req)
-	shard := 4.0
-	shard, e := stats.Round(math.Pow(math.Log(float64(len(req.Data))), math.SqrtPi*math.Sqrt2), 0)
+	shard, e := getShard(len(req.Data))
 	if e != nil {
 		return e
 	}
-	shard = math.Max(1, shard)
 	logr.Infof("#shard: %.0f", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
 	rep.Scores = make([]float64, 0, 16)
 	rep.RowIds = make([]string, 0, 16)
 	rep.Detail = make([]map[string]interface{}, 0, 16)
-	f := flow.New("KDJ Score Calculation").Slices(mapSource).RoundRobin("rr", int(shard)).
+	f := flow.New("KDJ Score Calculation").Slices(mapSource).RoundRobin("rr", shard).
 		Map("kdjScorer", kdjScorer).
 		ReduceBy("kdjScoreCollector", kdjScoreCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
@@ -85,15 +83,28 @@ func (s *IndcScorer) ScoreKdj(req *rm.KdjScoreReq, rep *rm.KdjScoreRep) error {
 	return nil
 }
 
+func getShard(size int) (int, error) {
+	shard := conf.Args.Shard
+	if shard <= 0 {
+		fshard, e := stats.Round(math.Pow(math.Log(float64(size)), math.SqrtPi*math.Sqrt2), 0)
+		if e != nil {
+			return 0, e
+		}
+		shard = int(math.Max(1, fshard))
+	}
+	return shard, nil
+}
+
 func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
 	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, pass: %d",
 		len(req.Data), req.Prec, req.Pass)
 	fdvs := req.Data
 	for p := 0; p < req.Pass; p++ {
-		logr.Debugf("%s begin prune pass %d, len: %d", req.ID, p+1, len(fdvs))
+		id := fmt.Sprintf("%s:P%d", req.ID, p+1)
+		logr.Debugf("prune pass: [%s] len: %d", id, len(fdvs))
 		stp := time.Now()
 		bfc := len(fdvs)
-		fdvs, e = passKdjFeatDatPrune(req.ID, fdvs, req.Prec)
+		fdvs, e = passKdjFeatDatPrune(id, fdvs, req.Prec)
 		if e != nil {
 			return e
 		}
@@ -109,50 +120,30 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//call gleam api to map and reduce
 	mapSource := getKdjPruneMapSource(id, fdvs, prec)
-	logr.Debugf("#shard: %d", conf.Args.Shard)
+	shard, e := getShard(len(fdvs))
+	if e != nil {
+		return nil, e
+	}
+	logr.Debugf("#shard: %d", shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
-	f := flow.New("KDJ Pruning").Slices(mapSource).RoundRobin("rr", conf.Args.Shard).
+	f := flow.New("KDJ Pruning").Slices(mapSource).RoundRobin("rr", shard).
 		Map("kdjPruner", kdjPruner).
 		ReduceBy("kdjPruneCollector", kdjPruneCollector, sortOption).
 		OutputRow(func(r *util.Row) error {
 		//Output Row func begin
+		bg := time.Now()
+		defer logr.Debug("OutputRow() cost: %.2f", time.Since(bg).Seconds())
 		logr.Debugf("Output Row: %+v", r)
-		set := make(map[int]bool)
 		m := r.V[0].(map[string]interface{})
 		if len(m) != len(fdvs)-1 {
 			e = errors.Errorf("len of reduced map must be %d actual: %d", len(fdvs)-1, len(m))
 			logr.Error(e)
 			return e
 		}
-		for i := 0; i < len(fdvs); i++ {
-			f1 := fdvs[i]
-			if _, exists := set[i]; exists {
-				continue
-			}
-			rfdvs = append(rfdvs, f1)
-			if i == len(m) {
-				break
-			}
-			cdd := m[strconv.Itoa(i)].([]interface{})
-			if len(cdd) == 0 {
-				continue
-			}
-			for _, c := range cdd {
-				ic := int(gio.ToInt64(c))
-				if _, exists := set[ic]; exists {
-					continue
-				}
-				f2 := fdvs[ic]
-				for j := 0; j < f1.SmpNum; j++ {
-					ffn1 := float64(f1.FdNum)
-					ffn2 := float64(f2.FdNum)
-					f1.K[j] = (f1.K[j]*ffn1 + f2.K[j]*ffn2) / (ffn1 + ffn2)
-					f1.D[j] = (f1.D[j]*ffn1 + f2.D[j]*ffn2) / (ffn1 + ffn2)
-					f1.J[j] = (f1.J[j]*ffn1 + f2.J[j]*ffn2) / (ffn1 + ffn2)
-					f1.FdNum += f2.FdNum
-				}
-				set[ic] = true
-			}
+		rfdvs, e = mergeKdjPruneMap(fdvs, m)
+		if e != nil {
+			logr.Error(e)
+			return e
 		}
 		return nil
 	})
@@ -163,6 +154,39 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 		f.Run(option)
 	} else {
 		f.Run()
+	}
+	return
+}
+
+func mergeKdjPruneMap(fdvs []*model.KDJfdView, m map[string]interface{}) (rfdvs []*model.KDJfdView, e error) {
+	//FIXME FdNum doesn't add up
+	set := make(map[int]bool)
+	for i := 0; i < len(fdvs); i++ {
+		f1 := fdvs[i]
+		if _, exists := set[i]; exists {
+			continue
+		}
+		rfdvs = append(rfdvs, f1)
+		if i == len(m) {
+			break
+		}
+		cdd := m[strconv.Itoa(i)].([]interface{})
+		for _, c := range cdd {
+			ic := int(gio.ToInt64(c))
+			if _, exists := set[ic]; exists {
+				continue
+			}
+			f2 := fdvs[ic]
+			for j := 0; j < f1.SmpNum; j++ {
+				ffn1 := float64(f1.FdNum)
+				ffn2 := float64(f2.FdNum)
+				f1.K[j] = (f1.K[j]*ffn1 + f2.K[j]*ffn2) / (ffn1 + ffn2)
+				f1.D[j] = (f1.D[j]*ffn1 + f2.D[j]*ffn2) / (ffn1 + ffn2)
+				f1.J[j] = (f1.J[j]*ffn1 + f2.J[j]*ffn2) / (ffn1 + ffn2)
+			}
+			f1.FdNum += f2.FdNum
+			set[ic] = true
+		}
 	}
 	return
 }
