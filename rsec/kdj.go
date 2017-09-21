@@ -93,7 +93,7 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		logr.Debugf("%s begin prune pass %d, len: %d", req.ID, p+1, len(fdvs))
 		stp := time.Now()
 		bfc := len(fdvs)
-		fdvs, e = passKdjFeatDatPrune(fdvs, req.Prec)
+		fdvs, e = passKdjFeatDatPrune(req.ID, fdvs, req.Prec)
 		if e != nil {
 			return e
 		}
@@ -105,9 +105,9 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 	return nil
 }
 
-func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
+func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//call gleam api to map and reduce
-	mapSource := getKdjPruneMapSource(fdvs, prec)
+	mapSource := getKdjPruneMapSource(id, fdvs, prec)
 	logr.Debugf("#shard: %d", conf.Args.Shard)
 	sortOption := (&flow.SortOption{}).By(1, true)
 	f := flow.New("KDJ Pruning").Slices(mapSource).RoundRobin("rr", conf.Args.Shard).
@@ -119,16 +119,19 @@ func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.
 		set := make(map[int]bool)
 		m := r.V[0].(map[string]interface{})
 		if len(m) != len(fdvs)-1 {
-			e = errors.Errorf("result map not matched: %d : %d", len(m), len(fdvs)-1)
+			e = errors.Errorf("len of reduced map must be %d actual: %d", len(fdvs)-1, len(m))
 			logr.Error(e)
 			return e
 		}
-		for i := 0; i < len(m); i++ {
+		for i := 0; i < len(fdvs); i++ {
 			f1 := fdvs[i]
 			if _, exists := set[i]; exists {
 				continue
 			}
 			rfdvs = append(rfdvs, f1)
+			if i == len(m) {
+				break
+			}
 			cdd := m[strconv.Itoa(i)].([]interface{})
 			if len(cdd) == 0 {
 				continue
@@ -163,12 +166,13 @@ func passKdjFeatDatPrune(fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.
 	return
 }
 
-func getKdjPruneMapSource(fdvs []*model.KDJfdView, prec float64) (r [][]interface{}) {
+func getKdjPruneMapSource(id string, fdvs []*model.KDJfdView, prec float64) (r [][]interface{}) {
 	r = make([][]interface{}, len(fdvs)-1)
 	for i := 0; i < len(fdvs)-1; i++ {
 		r[i] = make([]interface{}, 1)
 		m := make(map[string]interface{})
 		r[i][0] = m
+		m["ID"] = id
 		kdjs := make([]map[string]interface{}, len(fdvs)-i)
 		m["KDJs"] = kdjs
 		//m["FdNum"] = v.FdNum
@@ -381,6 +385,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		}
 	}()
 	m := row[0].([]interface{})[0].(map[string]interface{})
+	id := m["ID"]
 	kdjs := m["KDJs"].([]interface{})
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0].(map[string]interface{})
@@ -402,7 +407,8 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	r := map[string]interface{}{
 		fmt.Sprintf("%+v", f1["Seq"]): cdd,
 	}
-	gio.Emit(f1["Seq"], r)
+	//should use the same key
+	gio.Emit(id, r)
 	return nil
 }
 

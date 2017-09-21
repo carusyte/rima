@@ -31,9 +31,7 @@ func init() {
 	if err != nil {
 		logrus.Errorf("config file error: %s", err)
 	} else {
-		logrus.Debugf("Configuration: %+v", Args)
 		//v.WatchConfig()
-
 		var level logrus.Level
 		switch Args.LogLevel {
 		case "debug":
@@ -51,6 +49,7 @@ func init() {
 		}
 		logrus.SetLevel(level)
 		logrus.SetOutput(os.Stderr)
+		logrus.Debugf("Configuration: %+v", Args)
 	}
 }
 
