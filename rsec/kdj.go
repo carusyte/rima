@@ -412,7 +412,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	//FIXME slice bounds out of range
 	defer func() {
 		if r := recover(); r != nil {
-			buf := make([]byte, 0, 16)
+			buf := make([]byte, 1<<16)
 			runtime.Stack(buf, false)
 			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v:\n%+v", r, string(buf))
 			if er, ok := r.(error); ok {
