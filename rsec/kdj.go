@@ -109,11 +109,10 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		req.ID, len(req.Data), req.Prec, req.PruneRate)
 	fdvs := req.Data
 	for prate, p := 1.0, 0; prate > req.PruneRate; p++ {
-		id := fmt.Sprintf("%s:P%d", req.ID, p+1)
-		logr.Debugf("prune pass: [%s] len: %d", id, len(fdvs))
+		logr.Debugf("[%s] prune pass #%d: len: %d", req.ID, p+1, len(fdvs))
 		stp := time.Now()
 		bfc := len(fdvs)
-		fdvs, e = passKdjFeatDatPrune(id, fdvs, req.Prec)
+		fdvs, e = passKdjFeatDatPrune(req.ID, fdvs, req.Prec)
 		if e != nil {
 			return e
 		}
