@@ -427,17 +427,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	prec := gio.ToFloat64(m["Prec"])
 	refIdx := int(gio.ToInt64(m["RefIdx"]))
 	var fdvs []*model.KDJfdView
-	for i := 0; i < 3; i++ {
-		cache.Cb().Get(kdjFdRawKey(id), &fdvs)
-		if len(fdvs) > 0 {
-			break
-		}
-		logr.Warnf("[%s] no data in cache server. refIdx:%d, len:%d", id, refIdx, len(fdvs))
-		time.Sleep(time.Second * 2)
-	}
-	if len(fdvs) == 0 {
-		return errors.Errorf("[%s] no data in cache server. refIdx:%d", id, refIdx)
-	}
+	cache.Cb().Get(id, &fdvs)
 	kdjs := fdvs[refIdx:]
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0]
