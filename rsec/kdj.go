@@ -20,6 +20,7 @@ import (
 	"strings"
 	"strconv"
 	"github.com/carusyte/rima/conf"
+	"runtime"
 )
 
 var (
@@ -408,9 +409,12 @@ func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 }
 
 func kdjPruneMapper(row []interface{}) (e error) {
+	//FIXME slice bounds out of range
 	defer func() {
 		if r := recover(); r != nil {
-			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v", r)
+			buf := make([]byte, 0, 16)
+			runtime.Stack(buf, false)
+			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v:\n%+v", r, string(buf))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneMapper(), %+v", row)
 			}
