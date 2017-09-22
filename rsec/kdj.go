@@ -113,7 +113,8 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		logr.Debugf("[%s] prune pass #%d: len: %d", req.ID, p+1, len(fdvs))
 		stp := time.Now()
 		bfc := len(fdvs)
-		fdvs, e = passKdjFeatDatPrune(req.ID, fdvs, req.Prec)
+		id := fmt.Sprintf("%s:P%d", kdjFdRawKey(req.ID), p)
+		fdvs, e = passKdjFeatDatPrune(id, fdvs, req.Prec)
 		if e != nil {
 			return e
 		}
@@ -132,7 +133,7 @@ func kdjFdRawKey(id string) string {
 
 func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//push data into cache server
-	e = storeInCb(map[string][]*model.KDJfdView{kdjFdRawKey(id): fdvs})
+	e = storeInCb(map[string][]*model.KDJfdView{id: fdvs})
 	if e != nil {
 		return rfdvs, e
 	}
