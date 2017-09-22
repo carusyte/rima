@@ -98,7 +98,7 @@ func getShard(size int) (int, error) {
 }
 
 func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
-	//FIXME killed by OOM killer, consider moving data to kv server
+	//TODO queue requests and responses in cache server
 	defer func() {
 		if r := recover(); r != nil {
 			logr.Errorf("IndcScorer.PruneKdj() is not nil: %+v", r)
@@ -340,8 +340,29 @@ func getKDJfdViews(cytp model.CYTP, num int) (buy, sell []*model.KDJfdView, e er
 
 func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView, e error) {
 	mk := kdjFdMapKey(cytp, bysl, num)
-	_, e = cache.Cb().Get(mk, &fdvs)
-	return;
+	b := cache.Cb()
+	defer b.Close()
+	_, e = b.Get(mk, &fdvs)
+	return
+}
+
+func kdjFdFrmCbRetry(id string) (fdvs []*model.KDJfdView, e error) {
+	bg := time.Now()
+	cb := cache.Cb()
+	defer cb.Close()
+	_, e = cb.Get(id, &fdvs)
+	if e != nil {
+		logr.Errorf("[%s] failed to get data from couchbase, time elapsed: %.2f\n "+
+			"%+v\n retry with replica server", id, time.Since(bg).Seconds(), e)
+		bg = time.Now()
+		_, e = cb.GetReplica(id, &fdvs, 0)
+		if e != nil {
+			logr.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
+				"%+v\n", id, time.Since(bg).Seconds(), e)
+			return fdvs, errors.Wrapf(e, "[%s] failed to get data from cache server", id)
+		}
+	}
+	return
 }
 
 func kdjFdFrmDb(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, error) {
@@ -426,12 +447,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	id := fmt.Sprintf("%+v", m["ID"])
 	prec := gio.ToFloat64(m["Prec"])
 	refIdx := int(gio.ToInt64(m["RefIdx"]))
-	fdvs := make([]*model.KDJfdView, 0, 16)
-	_, e = cache.Cb().Get(id, &fdvs)
-	if e != nil {
-		logr.Errorf("[%s | %d] failed to get data from couchbase\n%+v", id, refIdx, e)
-		return e
-	}
+	fdvs, e := kdjFdFrmCbRetry(id)
 	kdjs := fdvs[refIdx:]
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0]

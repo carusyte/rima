@@ -50,6 +50,7 @@ func (d *DataSync) SyncMap(req *map[string]interface{}, rep *bool) error {
 func storeInCb(fdMap map[string][]*model.KDJfdView) error {
 	log.Printf("store data in cache server")
 	cb := cache.Cb()
+	defer cb.Close()
 	for k, v := range fdMap {
 		_, e := cb.Upsert(k, v, 0)
 		if e != nil {
@@ -62,6 +63,7 @@ func storeInCb(fdMap map[string][]*model.KDJfdView) error {
 func storeMapInCb(fdMap map[string]interface{}) error {
 	log.Printf("store data in cache server")
 	cb := cache.Cb()
+	defer cb.Close()
 	for k, v := range fdMap {
 		_, e := cb.Upsert(k, v, 0)
 		if e != nil {
