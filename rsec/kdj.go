@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"github.com/carusyte/rima/conf"
 	"runtime"
+	"bytes"
 )
 
 var (
@@ -113,8 +114,7 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 		logr.Debugf("[%s] prune pass #%d: len: %d", req.ID, p+1, len(fdvs))
 		stp := time.Now()
 		bfc := len(fdvs)
-		id := fmt.Sprintf("%s:P%d", kdjFdRawKey(req.ID), p)
-		fdvs, e = passKdjFeatDatPrune(id, fdvs, req.Prec)
+		fdvs, e = passKdjFeatDatPrune(kdjFdRawKey(req.ID), fdvs, req.Prec)
 		if e != nil {
 			return e
 		}
@@ -415,7 +415,8 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		if r := recover(); r != nil {
 			buf := make([]byte, 1<<16)
 			runtime.Stack(buf, false)
-			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v:\n%+v", r, string(buf))
+			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v:\n%+v", r,
+				string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneMapper(), %+v", row)
 			}
@@ -427,6 +428,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	refIdx := int(gio.ToInt64(m["RefIdx"]))
 	var fdvs []*model.KDJfdView
 	cache.Cb().Get(kdjFdRawKey(id), &fdvs)
+	logr.Warnf("[%s] refIdx:%d, len:%d", refIdx, len(fdvs))
 	kdjs := fdvs[refIdx:]
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0]
@@ -442,7 +444,6 @@ func kdjPruneMapper(row []interface{}) (e error) {
 			cdd = append(cdd, i+refIdx)
 		}
 	}
-	//logr.Debugf("%s-%s-%d found %d similar", fdk.Cytp, fdk.Bysl, fdk.SmpNum, len(pend))
 	logr.Debugf("[%+v] matched seq: %+v", refIdx, cdd)
 	r := make(map[string]interface{})
 	r[strconv.Itoa(refIdx)] = cdd
