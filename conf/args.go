@@ -12,6 +12,7 @@ type Arguments struct {
 	CouchbaseServers string `mapstructure:"couchbase_servers"`
 	LogLevel         string `mapstructure:"log_level"`
 	Shard            int    `mapstructure:"shard"`
+	CouchbaseTimeout int  `mapstructure:"couchbase_timeout"`
 }
 
 func init() {
@@ -56,4 +57,5 @@ func init() {
 func setDefaults() {
 	Args.LogLevel = "info"
 	Args.Shard = 20
+	Args.CouchbaseTimeout = 5
 }

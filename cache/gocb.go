@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/carusyte/rima/conf"
 	"log"
+	"time"
 )
 
 var (
@@ -25,6 +26,7 @@ func Cb() *gocb.Bucket {
 		initCb()
 	}
 	bucket, e := cbclus.OpenBucket("rima", "")
+	bucket.SetOperationTimeout(time.Second * time.Duration(conf.Args.CouchbaseTimeout))
 	if e != nil {
 		log.Panicln("failed to open couchbase bucket", e)
 	}
