@@ -426,8 +426,12 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	id := fmt.Sprintf("%+v", m["ID"])
 	prec := gio.ToFloat64(m["Prec"])
 	refIdx := int(gio.ToInt64(m["RefIdx"]))
-	var fdvs []*model.KDJfdView
-	cache.Cb().Get(id, &fdvs)
+	fdvs := make([]*model.KDJfdView, 0, 16)
+	_, e = cache.Cb().Get(id, &fdvs)
+	if e != nil {
+		logr.Errorf("[%s | %d] failed to get data from couchbase\n%+v", id, refIdx, e)
+		return e
+	}
 	kdjs := fdvs[refIdx:]
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0]
