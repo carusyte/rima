@@ -96,6 +96,7 @@ func getShard(size int) (int, error) {
 }
 
 func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
+	//FIXME killed by OOM killer, consider moving data to kv server
 	defer func() {
 		if r := recover(); r != nil {
 			logr.Errorf("IndcScorer.PruneKdj() is not nil: %+v", r)
@@ -104,8 +105,8 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 			}
 		}
 	}()
-	logr.Infof("IndcScorer.PruneKdj called, input size: %d, prec: %.3f, prune rate: %.2f",
-		len(req.Data), req.Prec, req.PruneRate)
+	logr.Infof("IndcScorer.PruneKdj called, id: %s, input size: %d, prec: %.3f, prune rate: %.2f",
+		req.ID, len(req.Data), req.Prec, req.PruneRate)
 	fdvs := req.Data
 	for prate, p := 1.0, 0; prate > req.PruneRate; p++ {
 		id := fmt.Sprintf("%s:P%d", req.ID, p+1)
@@ -125,7 +126,16 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 	return nil
 }
 
+func kdjFdRawKey(id string) string {
+	return fmt.Sprintf("RAW:%s", id)
+}
+
 func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
+	//push data into cache server
+	e = storeInCb(map[string][]*model.KDJfdView{kdjFdRawKey(id): fdvs})
+	if e != nil {
+		return rfdvs, e
+	}
 	//call gleam api to map and reduce
 	mapSource := getKdjPruneMapSource(id, fdvs, prec)
 	shard, e := getShard(len(fdvs))
@@ -206,18 +216,8 @@ func getKdjPruneMapSource(id string, fdvs []*model.KDJfdView, prec float64) (r [
 		m := make(map[string]interface{})
 		r[i][0] = m
 		m["ID"] = id
-		kdjs := make([]map[string]interface{}, len(fdvs)-i)
-		m["KDJs"] = kdjs
-		//m["FdNum"] = v.FdNum
-		//m["SmpNum"] = v.SmpNum
-		for j := 0; j < len(kdjs); j++ {
-			kdjs[j] = make(map[string]interface{})
-			kdjs[j]["Seq"] = j + i
-			kdjs[j]["Prec"] = prec
-			kdjs[j]["K"] = fdvs[j+i].K
-			kdjs[j]["D"] = fdvs[j+i].D
-			kdjs[j]["J"] = fdvs[j+i].J
-		}
+		m["RefIdx"] = i
+		m["Prec"] = prec
 	}
 	return r
 }
@@ -418,27 +418,30 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		}
 	}()
 	m := row[0].([]interface{})[0].(map[string]interface{})
-	id := m["ID"]
-	kdjs := m["KDJs"].([]interface{})
+	id := fmt.Sprintf("%+v", m["ID"])
+	prec := gio.ToFloat64(m["Prec"])
+	refIdx := int(gio.ToInt64(m["RefIdx"]))
+	var fdvs []*model.KDJfdView
+	cache.Cb().Get(kdjFdRawKey(id), &fdvs)
+	kdjs := fdvs[refIdx:]
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
-	f1 := kdjs[0].(map[string]interface{})
-	prec := gio.ToFloat64(f1["Prec"])
+	f1 := kdjs[0]
 	cdd := make([]interface{}, 0, 16)
 	for i := 1; i < len(kdjs); i++ {
-		f2 := kdjs[i].(map[string]interface{})
-		d, e := CalcKdjDevi(f1["K"], f1["D"], f1["J"], f2["K"], f2["D"], f2["J"])
+		f2 := kdjs[i]
+		d, e := CalcKdjDevi(f1.K, f1.D, f1.J, f2.K, f2.D, f2.J)
 		if e != nil {
 			logr.Errorf("kdjPruneMapper failed\n%+v", e)
 			return e
 		}
 		if d >= prec {
-			cdd = append(cdd, f2["Seq"])
+			cdd = append(cdd, i+refIdx)
 		}
 	}
 	//logr.Debugf("%s-%s-%d found %d similar", fdk.Cytp, fdk.Bysl, fdk.SmpNum, len(pend))
-	logr.Debugf("[%+v] matched seq: %+v", f1["Seq"], cdd)
+	logr.Debugf("[%+v] matched seq: %+v", refIdx, cdd)
 	r := make(map[string]interface{})
-	r[fmt.Sprintf("%+v", f1["Seq"])] = cdd
+	r[strconv.Itoa(refIdx)] = cdd
 	//should use the same key
 	gio.Emit(id, r)
 	return nil

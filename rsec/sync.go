@@ -31,7 +31,35 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 	return nil
 }
 
+func (d *DataSync) SyncMap(req *map[string]interface{}, rep *bool) error {
+	st := time.Now()
+	m := *req
+	log.Printf("DataSync.SyncMap called, input size: %d", len(m))
+	defer func() {
+		log.Printf("DataSync.SyncMap finished, input size: %d, time: %.2f", len(m), time.Since(st).Seconds())
+	}()
+	//e := storeInDb(m)
+	e := storeMapInCb(m)
+	if e != nil {
+		return e
+	}
+	*rep = true
+	return nil
+}
+
 func storeInCb(fdMap map[string][]*model.KDJfdView) error {
+	log.Printf("store data in cache server")
+	cb := cache.Cb()
+	for k, v := range fdMap {
+		_, e := cb.Upsert(k, v, 0)
+		if e != nil {
+			return errors.Wrapf(e, "failed to store %s to cache server.", k)
+		}
+	}
+	return nil
+}
+
+func storeMapInCb(fdMap map[string]interface{}) error {
 	log.Printf("store data in cache server")
 	cb := cache.Cb()
 	for k, v := range fdMap {
