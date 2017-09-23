@@ -22,6 +22,7 @@ import (
 	"github.com/carusyte/rima/conf"
 	"runtime"
 	"bytes"
+	"math/rand"
 )
 
 var (
@@ -350,11 +351,24 @@ func kdjFdFrmCbRetry(id string) (fdvs []*model.KDJfdView, e error) {
 	bg := time.Now()
 	cb := cache.Cb()
 	defer cb.Close()
-	_, e = cb.Get(id, &fdvs)
-	if e != nil {
-		logr.Errorf("[%s] failed to get data from couchbase, time elapsed: %.2f\n "+
-			"%+v\n retry with replica server", id, time.Since(bg).Seconds(), e)
-		bg = time.Now()
+	switch rand.Intn(strings.Count(conf.Args.CouchbaseServers, ",") + 1) {
+	case 0:
+		_, e = cb.Get(id, &fdvs)
+		if e == nil {
+			logr.Debugf("[%s] get data from couchbase, time elapsed: %.2f",
+				id, time.Since(bg).Seconds())
+		} else {
+			logr.Errorf("[%s] failed to get data from couchbase, time elapsed: %.2f\n "+
+				"%+v\n retry with replica server", id, time.Since(bg).Seconds(), e)
+			bg = time.Now()
+			_, e = cb.GetReplica(id, &fdvs, 0)
+			if e != nil {
+				logr.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
+					"%+v\n", id, time.Since(bg).Seconds(), e)
+				return fdvs, errors.Wrapf(e, "[%s] failed to get data from cache server", id)
+			}
+		}
+	default:
 		_, e = cb.GetReplica(id, &fdvs, 0)
 		if e != nil {
 			logr.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
@@ -431,7 +445,6 @@ func kdjFdMapKey(cytp model.CYTP, bysl string, num int) string {
 }
 
 func kdjPruneMapper(row []interface{}) (e error) {
-	//FIXME slice bounds out of range
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 1<<16)
@@ -656,7 +669,10 @@ func calcKdjScore(kdj map[string]interface{}, buyfds, sellfds []*model.KDJfdView
 func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logr.Errorf("kdjPruneReducer.recover() is not nil: %+v", r)
+			buf := make([]byte, 1<<16)
+			runtime.Stack(buf, false)
+			logr.Errorf("kdjPruneReducer.recover() is not nil: %+v:\n%+v", r,
+				string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneReducer(), x:%+v, y:%+v", x, y)
 			}
