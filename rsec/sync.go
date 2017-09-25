@@ -60,6 +60,7 @@ func storeInCb(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (segN
 				_, e = cb.Upsert(k, v[segSize*i:end], 0)
 			}
 		} else {
+			segNum = 1
 			_, e = cb.Upsert(k, v, 0)
 		}
 		if e != nil {
