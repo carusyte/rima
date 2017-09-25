@@ -107,7 +107,7 @@ func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error
 	//TODO queue requests and responses in cache server
 	defer func() {
 		if r := recover(); r != nil {
-			logr.Errorf("IndcScorer.PruneKdj() is not nil: %+v", r)
+			logr.Errorf("recover from IndcScorer.PruneKdj() is not nil: %+v", r)
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute IndcScorer.PruneKdj(), req.ID=%s", req.ID)
 			}
@@ -138,6 +138,17 @@ func kdjFdRawKey(id string) string {
 }
 
 func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 1<<16)
+			runtime.Stack(buf, false)
+			logr.Errorf("recover from passKdjFeatDatPrune() is not nil: %+v \n %+v",
+				r, string(bytes.Trim(buf, "\x00")))
+			if er, ok := r.(error); ok {
+				e = errors.Wrapf(er, "failed to execute passKdjFeatDatPrune(), req.ID=%s", id)
+			}
+		}
+	}()
 	//push data into cache server
 	seg, e := storeInCb(
 		map[string][]*model.KDJfdView{id: fdvs},
@@ -187,7 +198,6 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 }
 
 func mergeKdjPruneMap(fdvs []*model.KDJfdView, m map[string]interface{}) (rfdvs []*model.KDJfdView, e error) {
-	//FIXME FdNum doesn't add up
 	set := make(map[int]bool)
 	for i := 0; i < len(fdvs); i++ {
 		f1 := fdvs[i]
@@ -465,7 +475,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		if r := recover(); r != nil {
 			buf := make([]byte, 1<<16)
 			runtime.Stack(buf, false)
-			logr.Errorf("kdjPruneMapper.recover() is not nil: %+v:\n%+v", r,
+			logr.Errorf("recover from kdjPruneMapper.recover() is not nil: %+v:\n%+v", r,
 				string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneMapper(), %+v", row)
@@ -688,7 +698,7 @@ func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
 		if r := recover(); r != nil {
 			buf := make([]byte, 1<<16)
 			runtime.Stack(buf, false)
-			logr.Errorf("kdjPruneReducer.recover() is not nil: %+v:\n%+v", r,
+			logr.Errorf("recover from kdjPruneReducer.recover() is not nil: %+v:\n%+v", r,
 				string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneReducer(), x:%+v, y:%+v", x, y)
