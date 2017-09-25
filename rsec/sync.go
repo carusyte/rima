@@ -55,9 +55,9 @@ func storeInCb(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (segN
 		if segSize > 0 && segThold >= segSize && len(v) > segThold {
 			segNum = int(math.Ceil(float64(len(v)) / float64(segSize)))
 			for i := 0; i < segNum; i++ {
-				k = fmt.Sprintf("%s:%d", k, i+1)
+				sk := fmt.Sprintf("%s:%d", k, i+1)
 				end := int(math.Min(float64(segSize*(i+1)), float64(len(v))))
-				_, e = cb.Upsert(k, v[segSize*i:end], 0)
+				_, e = cb.Upsert(sk, v[segSize*i:end], 0)
 			}
 		} else {
 			segNum = 1
