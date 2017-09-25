@@ -139,7 +139,7 @@ func kdjFdRawKey(id string) string {
 
 func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//push data into cache server
-	e = storeInCb(
+	seg, e := storeInCb(
 		map[string][]*model.KDJfdView{id: fdvs},
 		KDJ_PRUNE_RAW_CACHE_SEG_SIZE,
 		KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD)
@@ -147,7 +147,7 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 		return rfdvs, e
 	}
 	//call gleam api to map and reduce
-	mapSource := getKdjPruneMapSource(id, fdvs, prec)
+	mapSource := getKdjPruneMapSource(id, fdvs, prec, seg)
 	shard, e := getShard(len(fdvs))
 	if e != nil {
 		return nil, e
@@ -219,13 +219,14 @@ func mergeKdjPruneMap(fdvs []*model.KDJfdView, m map[string]interface{}) (rfdvs 
 	return
 }
 
-func getKdjPruneMapSource(id string, fdvs []*model.KDJfdView, prec float64) (r [][]interface{}) {
+func getKdjPruneMapSource(id string, fdvs []*model.KDJfdView, prec float64, seg int) (r [][]interface{}) {
 	r = make([][]interface{}, len(fdvs)-1)
 	for i := 0; i < len(fdvs)-1; i++ {
 		r[i] = make([]interface{}, 1)
 		m := make(map[string]interface{})
 		r[i][0] = m
 		m["ID"] = id
+		m["Seg"] = seg
 		m["RefIdx"] = i
 		m["Prec"] = prec
 	}
