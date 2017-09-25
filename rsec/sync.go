@@ -23,7 +23,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 		log.Printf("DataSync.SyncKdjFd finished, input size: %d, time: %.2f", len(fdMap), time.Since(st).Seconds())
 	}()
 	//e := storeInDb(fdMap)
-	e := storeInCb(fdMap)
+	e := storeInCb(fdMap, 0, 0)
 	if e != nil {
 		return e
 	}
@@ -47,12 +47,21 @@ func (d *DataSync) SyncMap(req *map[string]interface{}, rep *bool) error {
 	return nil
 }
 
-func storeInCb(fdMap map[string][]*model.KDJfdView) error {
+func storeInCb(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (e error) {
 	log.Printf("store data in cache server")
 	cb := cache.Cb()
 	defer cb.Close()
 	for k, v := range fdMap {
-		_, e := cb.Upsert(k, v, 0)
+		if segSize > 0 && segThold >= segSize && len(v) > segThold {
+			segNum := int(math.Ceil(float64(len(v)) / float64(segSize)))
+			for i := 0; i < segNum; i++ {
+				k = fmt.Sprintf("%s:%d", k, i+1)
+				end := int(math.Min(float64(segSize*(i+1)), float64(len(v))))
+				_, e = cb.Upsert(k, v[segSize*i:end], 0)
+			}
+		} else {
+			_, e = cb.Upsert(k, v, 0)
+		}
 		if e != nil {
 			return errors.Wrapf(e, "failed to store %s to cache server.", k)
 		}

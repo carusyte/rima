@@ -25,6 +25,11 @@ import (
 	"math/rand"
 )
 
+const (
+	KDJ_PRUNE_RAW_CACHE_SEG_SIZE      = 30000
+	KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD = 50000
+)
+
 var (
 	kdjFdMap          = make(map[string][]*model.KDJfdView)
 	lock              = sync.RWMutex{}
@@ -134,7 +139,10 @@ func kdjFdRawKey(id string) string {
 
 func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdvs []*model.KDJfdView, e error) {
 	//push data into cache server
-	e = storeInCb(map[string][]*model.KDJfdView{id: fdvs})
+	e = storeInCb(
+		map[string][]*model.KDJfdView{id: fdvs},
+		KDJ_PRUNE_RAW_CACHE_SEG_SIZE,
+		KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD)
 	if e != nil {
 		return rfdvs, e
 	}
@@ -347,34 +355,41 @@ func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView,
 	return
 }
 
-func kdjFdFrmCbRetry(id string) (fdvs []*model.KDJfdView, e error) {
+func kdjFdFrmCbRetry(id string, seg int) (fdvs []*model.KDJfdView, e error) {
 	bg := time.Now()
 	cb := cache.Cb()
 	defer cb.Close()
-	switch rand.Intn(strings.Count(conf.Args.CouchbaseServers, ",") + 1) {
-	case 0:
-		_, e = cb.Get(id, &fdvs)
-		if e == nil {
-			logr.Debugf("[%s] get data from couchbase, time elapsed: %.2f",
-				id, time.Since(bg).Seconds())
-		} else {
-			logr.Errorf("[%s] failed to get data from couchbase, time elapsed: %.2f\n "+
-				"%+v\n retry with replica server", id, time.Since(bg).Seconds(), e)
-			bg = time.Now()
-			_, e = cb.GetReplica(id, &fdvs, 0)
+	for i := 1; i <= int(seg); i++ {
+		if seg > 1 {
+			id = fmt.Sprintf("%s:%d", id, i)
+		}
+		var tfdvs []*model.KDJfdView
+		switch rand.Intn(strings.Count(conf.Args.CouchbaseServers, ",") + 1) {
+		case 0:
+			_, e = cb.Get(id, &tfdvs)
+			if e == nil {
+				logr.Debugf("[%s] get data from couchbase, time elapsed: %.2f",
+					id, time.Since(bg).Seconds())
+			} else {
+				logr.Errorf("[%s] failed to get data from couchbase, time elapsed: %.2f\n "+
+					"%+v\n retry with replica server", id, time.Since(bg).Seconds(), e)
+				bg = time.Now()
+				_, e = cb.GetReplica(id, &tfdvs, 0)
+				if e != nil {
+					logr.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
+						"%+v\n", id, time.Since(bg).Seconds(), e)
+					return nil, errors.Wrapf(e, "[%s] failed to get data from cache server", id)
+				}
+			}
+		default:
+			_, e = cb.GetReplica(id, &tfdvs, 0)
 			if e != nil {
 				logr.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
 					"%+v\n", id, time.Since(bg).Seconds(), e)
-				return fdvs, errors.Wrapf(e, "[%s] failed to get data from cache server", id)
+				return nil, errors.Wrapf(e, "[%s] failed to get data from cache server", id)
 			}
 		}
-	default:
-		_, e = cb.GetReplica(id, &fdvs, 0)
-		if e != nil {
-			logr.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
-				"%+v\n", id, time.Since(bg).Seconds(), e)
-			return fdvs, errors.Wrapf(e, "[%s] failed to get data from cache server", id)
-		}
+		fdvs = append(fdvs, tfdvs...)
 	}
 	return
 }
@@ -458,9 +473,10 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	}()
 	m := row[0].([]interface{})[0].(map[string]interface{})
 	id := fmt.Sprintf("%+v", m["ID"])
+	seg := int(gio.ToInt64(m["Seg"]))
 	prec := gio.ToFloat64(m["Prec"])
 	refIdx := int(gio.ToInt64(m["RefIdx"]))
-	fdvs, e := kdjFdFrmCbRetry(id)
+	fdvs, e := kdjFdFrmCbRetry(id, seg)
 	kdjs := fdvs[refIdx:]
 	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 	f1 := kdjs[0]
