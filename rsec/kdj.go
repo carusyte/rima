@@ -106,9 +106,13 @@ func getShard(size int) (int, error) {
 func (s *IndcScorer) PruneKdj(req *rm.KdjPruneReq, rep *rm.KdjPruneRep) (e error) {
 	//TODO queue requests and responses in cache server?
 	//TODO shrink the dataset as we are scanning in mapper?
+	//TODO avoid program exiting when runtime error occurs
 	defer func() {
 		if r := recover(); r != nil {
-			logr.Errorf("recover from IndcScorer.PruneKdj() is not nil: %+v", r)
+			buf := make([]byte, 1<<16)
+			runtime.Stack(buf, false)
+			logr.Errorf("recover from IndcScorer.PruneKdj() is not nil: %+v \n %+v",
+				r, string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute IndcScorer.PruneKdj(), req.ID=%s", req.ID)
 			}
@@ -146,12 +150,12 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 			logr.Errorf("recover from passKdjFeatDatPrune() is not nil: %+v \n %+v",
 				r, string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
-				e = errors.Wrapf(er, "failed to execute passKdjFeatDatPrune(), req.ID=%s", id)
+				e = errors.Wrapf(er, "failed to execute passKdjFeatDatPrune(), id=%s", id)
 			}
 		}
 	}()
 	//push data into cache server
-	seg, e := storeInCb(
+	seg, e := cacheKdjFd(
 		map[string][]*model.KDJfdView{id: fdvs},
 		KDJ_PRUNE_RAW_CACHE_SEG_SIZE,
 		KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD)
@@ -160,6 +164,10 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 	}
 	//call gleam api to map and reduce
 	mapSource := getKdjPruneMapSource(id, fdvs, prec, seg)
+	e = initKdjPruneCache(id, len(fdvs))
+	if e != nil {
+		return nil, e
+	}
 	shard, e := getShard(len(fdvs))
 	if e != nil {
 		return nil, e
@@ -188,14 +196,106 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 		return nil
 	})
 	if len(fdvs) >= 30 {
+		ticker := time.NewTicker(time.Second)
+		go cleanKdjFdSamp(id, len(fdvs), ticker)
 		option := distributed.Option().SetDataCenter("defaultDataCenter").
 			SetMaster("localhost:45326")
 		option.Rack = "defaultRack"
 		f.Run(option)
+		ticker.Stop()
+		clearKdjPruneCache(id, len(fdvs))
 	} else {
 		f.Run()
 	}
 	return
+}
+
+func clearKdjPruneCache(id string, length int) {
+	cb := cache.Cb()
+	segSize := KDJ_PRUNE_RAW_CACHE_SEG_SIZE
+	segThold := KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD
+	// clear raw data
+	if segSize > 0 && segThold >= segSize && length > segThold {
+		segNum := int(math.Ceil(float64(length) / float64(segSize)))
+		for i := 0; i < segNum; i++ {
+			sk := fmt.Sprintf("%s:%d", id, i+1)
+			_, e := cb.Remove(sk, 0)
+			if e != nil {
+				logr.Errorf("%s failed to clear raw data in cache \n %+v", id, e)
+			}
+		}
+	} else {
+		_, e := cb.Remove(id, 0)
+		if e != nil {
+			logr.Errorf("%s failed to clear raw data in cache \n %+v", id, e)
+		}
+	}
+	//clear ptag
+	_, e := cb.Remove(fmt.Sprintf("PTAG:%s", id), 0)
+	if e != nil {
+		logr.Errorf("%s failed to clear ptag in cache \n %+v", id, e)
+	}
+	//clear wmap
+	_, e = cb.Remove(fmt.Sprintf("WMAP:%s", id), 0)
+	if e != nil {
+		logr.Errorf("%s failed to clear wmap in cache \n %+v", id, e)
+	}
+}
+
+// init ptag in cache server
+func initKdjPruneCache(id string, length int) (e error) {
+	e = cacheDoc(fmt.Sprintf("PTAG:%s", id), make([]bool, length))
+	if e != nil {
+		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache PTAG", id, length)
+	}
+	return nil
+}
+
+func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 1<<16)
+			runtime.Stack(buf, false)
+			logr.Errorf("recover from cleanKdjFdSamp() is not nil, id=%s \n %+v \n %+v",
+				id, r, string(bytes.Trim(buf, "\x00")))
+		}
+	}()
+	i := 0
+	for range ticker.C {
+		if i >= length {
+			break
+		}
+		wmap, e := kdjWmap(id)
+		if e != nil {
+			logr.Errorf("[id=%s] failed to get wmap \n %+v", id, e)
+			continue
+		}
+		if wmap[i] == nil {
+			// if current index is not processed, wait for next check
+			continue
+		} else {
+			index := make(map[int]bool)
+			for ; wmap[i] != nil; i++ {
+				for t := range wmap[i] {
+					index[t] = true
+				}
+			}
+			// update ptag
+			ptag, e := kdjPtag(id)
+			if e != nil {
+				logr.Errorf("[id=%s] failed to get ptag \n %+v", id, e)
+				continue
+			}
+			for x, _ := range index {
+				ptag[x] = true
+			}
+			e = cacheDoc(fmt.Sprintf("PTAG:%s", id), ptag)
+			if e != nil {
+				logr.Errorf("[id=%s] failed to update ptag \n %+v", id, e)
+				continue
+			}
+		}
+	}
 }
 
 func mergeKdjPruneMap(fdvs []*model.KDJfdView, m map[string]interface{}) (rfdvs []*model.KDJfdView, e error) {
@@ -367,13 +467,25 @@ func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView,
 	return
 }
 
+func kdjPtag(id string) (ptag []bool, e error) {
+	key := fmt.Sprintf("PTAG:%s", id)
+	e = cache.GetLB(key, &ptag)
+	return
+}
+
+func kdjWmap(id string) (wmap map[int][]int, e error) {
+	key := fmt.Sprintf("WMAP:%s", id)
+	e = cache.GetLB(key, &wmap)
+	return
+}
+
 func kdjFdFrmCbLoadBal(id string, seg int) (fdvs []*model.KDJfdView, e error) {
 	bg := time.Now()
 	cb := cache.Cb()
 	defer cb.Close()
-	var sid string
 	numSrv := strings.Count(conf.Args.CouchbaseServers, ",") + 1
 	for i := 1; i <= int(seg); i++ {
+		sid := id
 		if seg > 1 {
 			sid = fmt.Sprintf("%s:%d", id, i)
 		}
@@ -487,10 +599,12 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		if r := recover(); r != nil {
 			buf := make([]byte, 1<<16)
 			runtime.Stack(buf, false)
-			logr.Errorf("recover from kdjPruneMapper.recover() is not nil. row:\n %+v "+
+			logr.Errorf("kdjPruneMapper.recover() is not nil. row:\n %+v "+
 				"\n Error Stack: %+v:\n%+v", r, row, string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneMapper(), %+v", row)
+			} else {
+				e = errors.Errorf("failed to execute kdjPruneMapper(), %+v\n cause: \n %+v", row, er)
 			}
 		}
 	}()
@@ -498,29 +612,46 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	id := fmt.Sprintf("%+v", m["ID"])
 	seg := int(gio.ToInt64(m["Seg"]))
 	prec := gio.ToFloat64(m["Prec"])
-	refIdx := int(gio.ToInt64(m["RefIdx"]))
-	fdvs, e := kdjFdFrmCbLoadBal(id, seg)
+	refIdxStr := gio.ToString(m["RefIdx"])
+	refIdx := int(gio.ToInt64(refIdxStr))
+	ptag, e := kdjPtag(id)
 	if e != nil {
+		logr.Errorf("[id=%s] failed to get ptag \n %+v", id, e)
 		return e
 	}
-	kdjs := fdvs[refIdx:]
-	logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
-	f1 := kdjs[0]
 	cdd := make([]interface{}, 0, 16)
-	for i := 1; i < len(kdjs); i++ {
-		f2 := kdjs[i]
-		d, e := CalcKdjDevi(f1.K, f1.D, f1.J, f2.K, f2.D, f2.J)
+	if ptag[refIdx] {
+		logr.Debugf("%s skipping RefIdx[%d]", id, refIdx)
+	} else {
+		fdvs, e := kdjFdFrmCbLoadBal(id, seg)
 		if e != nil {
-			logr.Errorf("kdjPruneMapper failed\n%+v", e)
 			return e
 		}
-		if d >= prec {
-			cdd = append(cdd, i+refIdx)
+		kdjs := fdvs[refIdx:]
+		fdvs = nil
+		logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
+		f1 := kdjs[0]
+		for i := 1; i < len(kdjs); i++ {
+			if ptag[i] {
+				logr.Debugf("%s RefIdx=%d, skipping %d", id, refIdx, i)
+			} else {
+				f2 := kdjs[i]
+				d, e := CalcKdjDevi(f1.K, f1.D, f1.J, f2.K, f2.D, f2.J)
+				if e != nil {
+					logr.Errorf("kdjPruneMapper failed\n%+v", e)
+					return e
+				}
+				if d >= prec {
+					cdd = append(cdd, i+refIdx)
+				}
+			}
 		}
 	}
+	cb := cache.Cb()
+	cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cdd, true)
 	logr.Debugf("[%+v] matched seq: %+v", refIdx, cdd)
 	r := make(map[string]interface{})
-	r[strconv.Itoa(refIdx)] = cdd
+	r[refIdxStr] = cdd
 	//should use the same key
 	gio.Emit(id, r)
 	return nil
@@ -713,7 +844,7 @@ func kdjPruneReducer(x, y interface{}) (ret interface{}, e error) {
 		if r := recover(); r != nil {
 			buf := make([]byte, 1<<16)
 			runtime.Stack(buf, false)
-			logr.Errorf("recover from kdjPruneReducer.recover() is not nil: %+v:\n%+v", r,
+			logr.Errorf("kdjPruneReducer.recover() is not nil: %+v:\n%+v", r,
 				string(bytes.Trim(buf, "\x00")))
 			if er, ok := r.(error); ok {
 				e = errors.Wrapf(er, "failed to execute kdjPruneReducer(), x:%+v, y:%+v", x, y)

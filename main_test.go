@@ -5,6 +5,7 @@ import (
 	"time"
 	"fmt"
 	"google.golang.org/grpc"
+	"context"
 )
 
 func TestTimeUnix(t *testing.T) {
@@ -14,9 +15,17 @@ func TestTimeUnix(t *testing.T) {
 }
 
 func TestGrpd(t *testing.T) {
-	c,e:=grpc.Dial("adsfasdf", grpc.WithInsecure())
-	if e!=nil{
+	ctx := context.Background()
+	tctx, cancel := context.WithTimeout(ctx, time.Millisecond*10000)
+	defer cancel()
+	c, e := grpc.DialContext(tctx, "adsfasdf", grpc.WithInsecure(), grpc.WithBlock())
+	if e != nil {
 		panic(e)
 	}
-	fmt.Printf("%+v",c.GetState())
+	fmt.Printf("%+v", c.GetState())
+}
+
+func TestBoolSliceInit(t *testing.T) {
+	bs := make([]bool, 10)
+	fmt.Printf("%+v", bs)
 }

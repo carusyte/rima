@@ -6,6 +6,10 @@ import (
 	"github.com/carusyte/rima/conf"
 	"log"
 	"time"
+	"math/rand"
+	"strings"
+	"github.com/sirupsen/logrus"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -37,4 +41,47 @@ func Cb() *gocb.Bucket {
 		log.Panicln("failed to open couchbase bucket", e)
 	}
 	return bucket
+}
+
+// Get value using load balance. Parameter value is usually a pointer.
+func GetLB(key string, value interface{}) (e error) {
+	bg := time.Now()
+	cb := Cb()
+	defer cb.Close()
+	numSrv := strings.Count(conf.Args.CouchbaseServers, ",") + 1
+	switch rand.Intn(numSrv) {
+	case 0:
+		_, e = cb.Get(key, value)
+		if e == nil {
+			logrus.Debugf("[%s] get data from couchbase, time elapsed: %.2f",
+				key, time.Since(bg).Seconds())
+		} else {
+			logrus.Errorf("[%s] failed to get data from couchbase primary server, time elapsed: %.2f\n "+
+				"%+v\n retry with replica server", key, time.Since(bg).Seconds(), e)
+			bg = time.Now()
+			_, e = cb.GetReplica(key, value, 0)
+			if e != nil {
+				logrus.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
+					"%+v\n", key, time.Since(bg).Seconds(), e)
+				return errors.Wrapf(e, "[%s] failed to get data from cache server", key)
+			}
+		}
+	default:
+		_, e = cb.GetReplica(key, value, 0)
+		if e == nil {
+			logrus.Debugf("[%s] get data from couchbase, time elapsed: %.2f",
+				key, time.Since(bg).Seconds())
+		} else {
+			logrus.Errorf("[%s] failed to get data from couchbase replica, time elapsed: %.2f\n "+
+				"%+v\n retry with primary server", key, time.Since(bg).Seconds(), e)
+			bg = time.Now()
+			_, e = cb.Get(key, value)
+			if e != nil {
+				logrus.Errorf("[%s] failed to get data from couchbase primary server, time elapsed: %.2f\n "+
+					"%+v\n", key, time.Since(bg).Seconds(), e)
+				return errors.Wrapf(e, "[%s] failed to get data from cache server", key)
+			}
+		}
+	}
+	return nil
 }

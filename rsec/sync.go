@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"math"
 	"github.com/carusyte/rima/cache"
+	"github.com/sirupsen/logrus"
 )
 
 type DataSync struct{}
@@ -23,7 +24,7 @@ func (d *DataSync) SyncKdjFd(req *map[string][]*model.KDJfdView, rep *bool) erro
 		log.Printf("DataSync.SyncKdjFd finished, input size: %d, time: %.2f", len(fdMap), time.Since(st).Seconds())
 	}()
 	//e := storeInDb(fdMap)
-	_, e := storeInCb(fdMap, 0, 0)
+	_, e := cacheKdjFd(fdMap, 0, 0)
 	if e != nil {
 		return e
 	}
@@ -39,7 +40,7 @@ func (d *DataSync) SyncMap(req *map[string]interface{}, rep *bool) error {
 		log.Printf("DataSync.SyncMap finished, input size: %d, time: %.2f", len(m), time.Since(st).Seconds())
 	}()
 	//e := storeInDb(m)
-	e := storeMapInCb(m)
+	e := cacheMap(m)
 	if e != nil {
 		return e
 	}
@@ -47,8 +48,8 @@ func (d *DataSync) SyncMap(req *map[string]interface{}, rep *bool) error {
 	return nil
 }
 
-func storeInCb(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (segNum int, e error) {
-	log.Printf("store data in cache server")
+func cacheKdjFd(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (segNum int, e error) {
+	logrus.Debug("store data in cache server")
 	cb := cache.Cb()
 	defer cb.Close()
 	for k, v := range fdMap {
@@ -70,15 +71,26 @@ func storeInCb(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (segN
 	return
 }
 
-func storeMapInCb(fdMap map[string]interface{}) error {
-	log.Printf("store data in cache server")
+func cacheMap(mp map[string]interface{}) error {
+	logrus.Debug("store data in cache server")
 	cb := cache.Cb()
 	defer cb.Close()
-	for k, v := range fdMap {
+	for k, v := range mp {
 		_, e := cb.Upsert(k, v, 0)
 		if e != nil {
 			return errors.Wrapf(e, "failed to store %s to cache server.", k)
 		}
+	}
+	return nil
+}
+
+func cacheDoc(key string, doc interface{}) error {
+	logrus.Debug("store data in cache server")
+	cb := cache.Cb()
+	defer cb.Close()
+	_, e := cb.Upsert(key, doc, 0)
+	if e != nil {
+		return errors.Wrapf(e, "failed to store %s to cache server.", key)
 	}
 	return nil
 }
