@@ -626,7 +626,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	cdd := make([]interface{}, 0, 16)
 	cddi := make([]int, 0, 16) //for wmap caching
 	if ptag[refIdx] {
-		logr.Debugf("%s skipping RefIdx[%d]", id, refIdx)
+		logr.Warnf("%s skipping RefIdx[%d]", id, refIdx)
 	} else {
 		fdvs, e := kdjFdFrmCbLoadBal(id, seg)
 		if e != nil {
@@ -637,8 +637,8 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 		f1 := kdjs[0]
 		for i := 1; i < len(kdjs); i++ {
-			if ptag[i] {
-				logr.Debugf("%s RefIdx=%d, skipping %d", id, refIdx, i)
+			if ptag[refIdx+i] {
+				logr.Warnf("%s RefIdx=%d, skipping %d", id, refIdx, refIdx+i)
 			} else {
 				f2 := kdjs[i]
 				d, e := CalcKdjDevi(f1.K, f1.D, f1.J, f2.K, f2.D, f2.J)
