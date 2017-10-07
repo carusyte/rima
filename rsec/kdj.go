@@ -637,18 +637,19 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		logr.Debugf("kdjPruneMapper KDJs size: %d", len(kdjs))
 		f1 := kdjs[0]
 		for i := 1; i < len(kdjs); i++ {
-			if ptag[refIdx+i] {
-				logr.Warnf("%s RefIdx=%d, skipping %d", id, refIdx, refIdx+i)
+			idx := refIdx + i
+			if ptag[idx] {
+				logr.Warnf("%s RefIdx=%d, skipping %d", id, refIdx, idx)
 			} else {
 				f2 := kdjs[i]
 				d, e := CalcKdjDevi(f1.K, f1.D, f1.J, f2.K, f2.D, f2.J)
 				if e != nil {
-					logr.Errorf("kdjPruneMapper failed\n%+v", e)
+					logr.Errorf("kdjPruneMapper failed at idx %d \n %+v", idx, e)
 					return e
 				}
 				if d >= prec {
-					cdd = append(cdd, i+refIdx)
-					cddi = append(cddi, i+refIdx)
+					cdd = append(cdd, idx)
+					cddi = append(cddi, idx)
 				}
 			}
 		}
