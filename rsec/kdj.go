@@ -654,18 +654,25 @@ func kdjPruneMapper(row []interface{}) (e error) {
 			}
 		}
 	}
-	cb := cache.Cb()
-	_, e = cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cddi, false)
-	if e != nil {
-		logr.Errorf("[id=%s, refIdx=%d] failed to set WMAP \n %+v", id, refIdxStr, e)
-		return e
-	}
+	go insertKdjWmap(id, refIdxStr, cddi)
 	logr.Debugf("[%+v] matched seq: %+v", refIdx, cdd)
 	r := make(map[string]interface{})
 	r[refIdxStr] = cdd
 	//should use the same key
 	gio.Emit(id, r)
 	return nil
+}
+
+func insertKdjWmap(id string, refIdxStr string, cddi []int) {
+	for t := 0; t < 3; t++ {
+		cb := cache.Cb()
+		_, e := cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cddi, false)
+		if e != nil {
+			logr.Errorf("[id=%s, refIdx=%d] failed to set WMAP \n %+v", id, refIdxStr, e)
+		}else{
+			break
+		}
+	}
 }
 
 func kdjScoreMapper(row []interface{}) (e error) {
