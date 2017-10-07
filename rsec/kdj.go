@@ -624,6 +624,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		return e
 	}
 	cdd := make([]interface{}, 0, 16)
+	cddi := make([]int, 0, 16) //for wmap caching
 	if ptag[refIdx] {
 		logr.Debugf("%s skipping RefIdx[%d]", id, refIdx)
 	} else {
@@ -647,12 +648,13 @@ func kdjPruneMapper(row []interface{}) (e error) {
 				}
 				if d >= prec {
 					cdd = append(cdd, i+refIdx)
+					cddi = append(cddi, i+refIdx)
 				}
 			}
 		}
 	}
 	cb := cache.Cb()
-	_, e = cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cdd, false)
+	_, e = cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cddi, false)
 	if e != nil {
 		logr.Errorf("[id=%s, refIdx=%d] failed to set WMAP \n %+v", id, refIdx, e)
 		return e
