@@ -280,8 +280,8 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 		} else {
 			index := make(map[int]bool)
 			for ; wmap[strconv.Itoa(i)] != nil; i++ {
-				for t := range wmap[strconv.Itoa(i)] {
-					index[t] = true
+				for _, x := range wmap[strconv.Itoa(i)] {
+					index[x] = true
 				}
 			}
 			// update ptag
@@ -626,7 +626,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	cdd := make([]interface{}, 0, 16)
 	cddi := make([]int, 0, 16) //for wmap caching
 	if ptag[refIdx] {
-		logr.Warnf("%s skipping RefIdx[%d]", id, refIdx)
+		logr.Errorf("%s skipping RefIdx[%d]", id, refIdx)
 	} else {
 		fdvs, e := kdjFdFrmCbLoadBal(id, seg)
 		if e != nil {
@@ -639,7 +639,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		for i := 1; i < len(kdjs); i++ {
 			idx := refIdx + i
 			if ptag[idx] {
-				logr.Warnf("%s RefIdx=%d, skipping %d", id, refIdx, idx)
+				logr.Errorf("%s RefIdx=%d, skipping %d", id, refIdx, idx)
 			} else {
 				f2 := kdjs[i]
 				d, e := CalcKdjDevi(f1.K, f1.D, f1.J, f2.K, f2.D, f2.J)
