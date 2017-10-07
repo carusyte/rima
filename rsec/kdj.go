@@ -654,7 +654,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 			}
 		}
 	}
-	go insertKdjWmap(id, refIdxStr, cddi)
+	insertKdjWmap(id, refIdxStr, cddi)
 	logr.Debugf("[%+v] matched seq: %+v", refIdx, cdd)
 	r := make(map[string]interface{})
 	r[refIdxStr] = cdd
