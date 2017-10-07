@@ -248,7 +248,7 @@ func initKdjPruneCache(id string, length int) (e error) {
 	if e != nil {
 		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache PTAG", id, length)
 	}
-	e = cacheDoc(fmt.Sprintf("WMAP:%s", id), make(map[int][]int))
+	e = cacheDoc(fmt.Sprintf("WMAP:%s", id), make(map[string][]int))
 	if e != nil {
 		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache WMAP", id, length)
 	}
@@ -274,13 +274,13 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			logr.Errorf("[id=%s] failed to get wmap \n %+v", id, e)
 			continue
 		}
-		if wmap[i] == nil {
+		if wmap[strconv.Itoa(i)] == nil {
 			// if current index is not processed, wait for next check
 			continue
 		} else {
 			index := make(map[int]bool)
-			for ; wmap[i] != nil; i++ {
-				for t := range wmap[i] {
+			for ; wmap[strconv.Itoa(i)] != nil; i++ {
+				for t := range wmap[strconv.Itoa(i)] {
 					index[t] = true
 				}
 			}
@@ -477,7 +477,7 @@ func kdjPtag(id string) (ptag []bool, e error) {
 	return
 }
 
-func kdjWmap(id string) (wmap map[int][]int, e error) {
+func kdjWmap(id string) (wmap map[string][]int, e error) {
 	key := fmt.Sprintf("WMAP:%s", id)
 	e = cache.GetLB(key, &wmap)
 	return
@@ -652,7 +652,11 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		}
 	}
 	cb := cache.Cb()
-	cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cdd, true)
+	_, e = cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cdd, false)
+	if e != nil {
+		logr.Errorf("[id=%s, refIdx=%d] failed to set WMAP \n %+v", id, refIdx, e)
+		return e
+	}
 	logr.Debugf("[%+v] matched seq: %+v", refIdx, cdd)
 	r := make(map[string]interface{})
 	r[refIdxStr] = cdd
