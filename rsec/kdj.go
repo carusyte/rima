@@ -248,6 +248,10 @@ func initKdjPruneCache(id string, length int) (e error) {
 	if e != nil {
 		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache PTAG", id, length)
 	}
+	e = cacheDoc(fmt.Sprintf("WMAP:%s", id), make(map[int][]int))
+	if e != nil {
+		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache WMAP", id, length)
+	}
 	return nil
 }
 
