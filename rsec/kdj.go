@@ -278,10 +278,6 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			logr.Errorf("[id=%s] failed to get wmap \n %+v", id, e)
 			continue
 		}
-		if _, exists := wmap[strconv.Itoa(i)]; !exists {
-			// if current index is not processed, wait for next check
-			continue
-		}
 		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
 			for _, x := range list {
 				if x < 0 {

@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 	"fmt"
 	"github.com/carusyte/rima/conf"
 	"log"
@@ -87,10 +87,10 @@ func GetLB(key string, value interface{}) (e error) {
 	return nil
 }
 
-func RemoveElement(key, element string) error {
+func RemoveElement(key, path string) error {
 	b := Cb()
 	defer b.Close()
-	_, err := b.MutateIn(key, 0, 0).Remove(element).Execute()
+	_, err := b.MapRemove(key, path)
 	return err
 }
 
