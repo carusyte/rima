@@ -287,10 +287,6 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			if !exists {
 				break
 			}
-			e = cache.RemoveElement(wmapKey, strconv.Itoa(i))
-			if e != nil {
-				logr.Errorf("[id=%s] failed to trim wmap: %d \n %+v", id, i, e)
-			}
 			for _, x := range list {
 				if x < 0 {
 					continue
@@ -299,6 +295,10 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 				if e != nil {
 					logr.Errorf("[id=%s] failed to add ptag: %+v \n %+v", id, x, e)
 				}
+			}
+			e = cache.RemoveElement(wmapKey, strconv.Itoa(i))
+			if e != nil {
+				logr.Errorf("[id=%s] failed to trim wmap: %d \n %+v", id, i, e)
 			}
 		}
 	}
