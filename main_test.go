@@ -29,3 +29,12 @@ func TestBoolSliceInit(t *testing.T) {
 	bs := make([]bool, 10)
 	fmt.Printf("%+v", bs)
 }
+
+func TestGoroutine(t *testing.T) {
+	go func() {
+		time.Sleep(time.Second * 3)
+		fmt.Println("goroutine executed")
+	}()
+	fmt.Println("test func exiting")
+	time.Sleep(time.Second * 4)
+}

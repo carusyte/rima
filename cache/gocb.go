@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb"
 	"fmt"
 	"github.com/carusyte/rima/conf"
 	"log"

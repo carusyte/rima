@@ -212,6 +212,7 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 
 func clearKdjPruneCache(id string, length int) {
 	cb := cache.Cb()
+	defer cb.Close()
 	segSize := KDJ_PRUNE_RAW_CACHE_SEG_SIZE
 	segThold := KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD
 	// clear raw data
@@ -265,7 +266,10 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 		}
 	}()
 	i := 0
-	for range ticker.C {
+	for t := range ticker.C {
+		if t.Second() == 0 {
+			logr.Errorf("cleaning i=%d", i)
+		}
 		if i >= length {
 			break
 		}
@@ -664,12 +668,16 @@ func kdjPruneMapper(row []interface{}) (e error) {
 }
 
 func insertKdjWmap(id string, refIdxStr string, cddi []int) {
+	start := time.Now()
+	cb := cache.Cb()
+	defer cb.Close()
 	for t := 0; t < 3; t++ {
-		cb := cache.Cb()
 		_, e := cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cddi, false)
 		if e != nil {
-			logr.Errorf("[id=%s, refIdx=%d] failed to set WMAP \n %+v", id, refIdxStr, e)
-		}else{
+			logr.Errorf("[id=%s, refIdx=%s] failed to set WMAP \n %+v", id, refIdxStr, e)
+		} else {
+			logr.Errorf("wmap element: %+v %d %.2f",
+				refIdxStr, len(cddi), time.Since(start).Seconds())
 			break
 		}
 	}
