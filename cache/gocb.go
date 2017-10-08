@@ -86,3 +86,17 @@ func GetLB(key string, value interface{}) (e error) {
 	}
 	return nil
 }
+
+func RemoveElement(key, element string) error {
+	b := Cb()
+	defer b.Close()
+	_, err := b.MutateIn(key, 0, 0).Remove(element).Execute()
+	return err
+}
+
+func UpsertElement(key, path string, value interface{}) error {
+	b := Cb()
+	defer b.Close()
+	_, err := b.MutateIn(key, 0, 0).Upsert(path, value, false).Execute()
+	return err
+}

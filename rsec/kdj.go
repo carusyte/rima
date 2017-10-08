@@ -281,40 +281,25 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 		if _, exists := wmap[strconv.Itoa(i)]; !exists {
 			// if current index is not processed, wait for next check
 			continue
-		} else {
-			index := make([]int, 0, 16)
-			cut := make([]int, 0, 16)
-			for ; ; i++ {
-				list, exists := wmap[strconv.Itoa(i)]
-				if !exists {
-					break
-				} else {
-					cut = append(cut, i)
-					for _, x := range list {
-						if x >= 0 {
-							index = append(index, x)
-						}
-					}
-				}
+		}
+		for ; ; i++ {
+			list, exists := wmap[strconv.Itoa(i)]
+			if !exists {
+				break
 			}
-			cb := cache.Cb()
-			if len(index) > 0 {
-				// update ptag
-				for _, x := range index {
-					_, e = cb.MapAdd(ptagKey, strconv.Itoa(x), "", false)
-					if e != nil {
-						logr.Errorf("[id=%s] failed to add ptag: %+v \n %+v", id, x, e)
-					}
-				}
+			e = cache.RemoveElement(wmapKey, strconv.Itoa(i))
+			if e != nil {
+				logr.Errorf("[id=%s] failed to trim wmap: %d \n %+v", id, i, e)
 			}
-			// trim wmap
-			for _, c := range cut {
-				_, e = cb.MapRemove(wmapKey, strconv.Itoa(c))
+			for _, x := range list {
+				if x < 0 {
+					continue
+				}
+				e = cache.UpsertElement(ptagKey, strconv.Itoa(x), "")
 				if e != nil {
-					logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, c, e)
+					logr.Errorf("[id=%s] failed to add ptag: %+v \n %+v", id, x, e)
 				}
 			}
-			cb.Close()
 		}
 	}
 }
