@@ -282,11 +282,7 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			// if current index is not processed, wait for next check
 			continue
 		}
-		for ; ; i++ {
-			list, exists := wmap[strconv.Itoa(i)]
-			if !exists {
-				break
-			}
+		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
 			for _, x := range list {
 				if x < 0 {
 					continue
