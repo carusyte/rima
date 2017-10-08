@@ -83,9 +83,34 @@ func RemoveElement(key, path string) error {
 	return err
 }
 
+func RemoveElements(key string, paths []string) error {
+	b := Cb()
+	defer b.Close()
+	mib := b.MutateIn(key, 0, 0)
+	for _, p := range paths {
+		mib.Remove(p)
+	}
+	_, err := mib.Execute()
+	return err
+}
+
 func UpsertElement(key, path string, value interface{}) error {
 	b := Cb()
 	defer b.Close()
 	_, err := b.MutateIn(key, 0, 0).Upsert(path, value, false).Execute()
+	return err
+}
+
+func UpsertElements(key string, elements map[string]interface{}) error {
+	if len(elements) == 0 {
+		return nil
+	}
+	b := Cb()
+	defer b.Close()
+	mib := b.MutateIn(key, 0, 0)
+	for p, v := range elements {
+		mib.Upsert(p, v, false)
+	}
+	_, err := mib.Execute()
 	return err
 }

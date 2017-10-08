@@ -278,21 +278,32 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			logr.Errorf("[id=%s] failed to get wmap \n %+v", id, e)
 			continue
 		}
-		//FIXME probably too many connections to the couchbase server
+		if _, exists := wmap[strconv.Itoa(i)]; !exists {
+			continue
+		}
+		//FIXME buggy
+		var (
+			wms   []string
+			ptags = make(map[string]interface{})
+		)
 		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
 			for _, x := range list {
 				if x < 0 {
 					continue
 				}
-				e = cache.UpsertElement(ptagKey, strconv.Itoa(x), "")
-				if e != nil {
-					logr.Errorf("[id=%s] failed to add ptag: %+v \n %+v", id, x, e)
-				}
+				ptags[strconv.Itoa(x)] = ""
 			}
-			e = cache.RemoveElement(wmapKey, strconv.Itoa(i))
+			wms = append(wms, strconv.Itoa(i))
+		}
+		if len(ptags) > 0 {
+			e = cache.UpsertElements(ptagKey, ptags)
 			if e != nil {
-				logr.Errorf("[id=%s] failed to trim wmap: %d \n %+v", id, i, e)
+				logr.Errorf("[id=%s] failed to add %d ptags \n %+v", id, len(ptags), e)
 			}
+		}
+		e = cache.RemoveElements(wmapKey, wms)
+		if e != nil {
+			logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, wms, e)
 		}
 	}
 }
