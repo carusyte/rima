@@ -301,7 +301,7 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 				// update ptag
 				mib := cb.MutateIn(fmt.Sprintf("PTAG:%s", id), 0, 0)
 				for _, x := range index {
-					mib.Upsert(strconv.Itoa(x), "", false)
+					mib = mib.Upsert(strconv.Itoa(x), "", false)
 				}
 				_, e := mib.Execute()
 				if e != nil {
@@ -311,7 +311,7 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			// trim wmap
 			mib := cb.MutateIn(fmt.Sprintf("WMAP:%s", id), 0, 0)
 			for _, c := range cut {
-				mib.Remove(strconv.Itoa(c))
+				mib = mib.Remove(strconv.Itoa(c))
 			}
 			_, e = mib.Execute()
 			if e != nil {
