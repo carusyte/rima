@@ -266,6 +266,8 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 		}
 	}()
 	i := 0
+	ptagKey := fmt.Sprintf("PTAG:%s", id)
+	wmapKey := fmt.Sprintf("WMAP:%s", id)
 	for range ticker.C {
 		logr.Errorf("cleaning i=%d", i)
 		if i >= length {
@@ -296,27 +298,23 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 				}
 			}
 			cb := cache.Cb()
-			defer cb.Close()
 			if len(index) > 0 {
 				// update ptag
-				mib := cb.MutateIn(fmt.Sprintf("PTAG:%s", id), 0, 0)
 				for _, x := range index {
-					mib.Insert(strconv.Itoa(x), "", false)
-				}
-				_, e := mib.Execute()
-				if e != nil {
-					logr.Errorf("[id=%s] failed to update ptag: %+v \n %+v", id, index, e)
+					_, e = cb.MapAdd(ptagKey, strconv.Itoa(x), "", false)
+					if e != nil {
+						logr.Errorf("[id=%s] failed to add ptag: %+v \n %+v", id, x, e)
+					}
 				}
 			}
 			// trim wmap
-			mib := cb.MutateIn(fmt.Sprintf("WMAP:%s", id), 0, 0)
 			for _, c := range cut {
-				mib.Remove(strconv.Itoa(c))
+				_, e = cb.MapRemove(wmapKey, strconv.Itoa(c))
+				if e != nil {
+					logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, cut, e)
+				}
 			}
-			_, e = mib.Execute()
-			if e != nil {
-				logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, cut, e)
-			}
+			cb.Close()
 		}
 	}
 }
