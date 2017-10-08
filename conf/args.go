@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/sirupsen/logrus"
 	"os"
+	"time"
 )
 
 var Args Arguments
@@ -12,7 +13,10 @@ type Arguments struct {
 	CouchbaseServers string `mapstructure:"couchbase_servers"`
 	LogLevel         string `mapstructure:"log_level"`
 	Shard            int    `mapstructure:"shard"`
-	CouchbaseTimeout int  `mapstructure:"couchbase_timeout"`
+	CouchbaseTimeout int    `mapstructure:"couchbase_timeout"`
+	Kdj struct {
+		CleanInterval time.Duration `mapstructure:"clean_interval"`
+	}
 }
 
 func init() {
@@ -58,4 +62,5 @@ func setDefaults() {
 	Args.LogLevel = "info"
 	Args.Shard = 20
 	Args.CouchbaseTimeout = 5
+	Args.Kdj.CleanInterval = 2
 }

@@ -196,7 +196,7 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 		return nil
 	})
 	if len(fdvs) >= 30 {
-		ticker := time.NewTicker(time.Second)
+		ticker := time.NewTicker(time.Second * conf.Args.Kdj.CleanInterval)
 		go cleanKdjFdSamp(id, len(fdvs), ticker)
 		option := distributed.Option().SetDataCenter("defaultDataCenter").
 			SetMaster("localhost:45326")
@@ -266,10 +266,8 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 		}
 	}()
 	i := 0
-	for t := range ticker.C {
-		if t.Second() == 0 {
-			logr.Errorf("cleaning i=%d", i)
-		}
+	for range ticker.C {
+		logr.Errorf("cleaning i=%d", i)
 		if i >= length {
 			break
 		}
@@ -278,29 +276,46 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			logr.Errorf("[id=%s] failed to get wmap \n %+v", id, e)
 			continue
 		}
-		if wmap[strconv.Itoa(i)] == nil {
+		if _, exists := wmap[strconv.Itoa(i)]; !exists {
 			// if current index is not processed, wait for next check
 			continue
 		} else {
-			index := make(map[int]bool)
-			for ; wmap[strconv.Itoa(i)] != nil; i++ {
-				for _, x := range wmap[strconv.Itoa(i)] {
-					index[x] = true
+			index := make([]int, 0, 16)
+			cut := make([]int, 0, 16)
+			for ; ; i++ {
+				list, exists := wmap[strconv.Itoa(i)]
+				if !exists {
+					break
+				} else {
+					cut = append(cut, i)
+					for _, x := range list {
+						if x >= 0 {
+							index = append(index, x)
+						}
+					}
 				}
 			}
-			// update ptag
-			ptag, e := kdjPtag(id)
-			if e != nil {
-				logr.Errorf("[id=%s] failed to get ptag \n %+v", id, e)
-				continue
+			cb := cache.Cb()
+			defer cb.Close()
+			if len(index) > 0 {
+				// update ptag
+				mib := cb.MutateIn(fmt.Sprintf("PTAG:%s", id), 0, 0)
+				for _, x := range index {
+					mib.Upsert(strconv.Itoa(x), "", false)
+				}
+				_, e := mib.Execute()
+				if e != nil {
+					logr.Errorf("[id=%s] failed to update ptag \n %+v", id, e)
+				}
 			}
-			for x, _ := range index {
-				ptag[x] = true
+			// trim wmap
+			mib := cb.MutateIn(fmt.Sprintf("WMAP:%s", id), 0, 0)
+			for _, c := range cut {
+				mib.Remove(strconv.Itoa(c))
 			}
-			e = cacheDoc(fmt.Sprintf("PTAG:%s", id), ptag)
+			_, e = mib.Execute()
 			if e != nil {
-				logr.Errorf("[id=%s] failed to update ptag \n %+v", id, e)
-				continue
+				logr.Errorf("[id=%s] failed to trim wmap \n %+v", id, e)
 			}
 		}
 	}
@@ -475,7 +490,7 @@ func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView,
 	return
 }
 
-func kdjPtag(id string) (ptag []bool, e error) {
+func kdjPtag(id string) (ptag map[string]string, e error) {
 	key := fmt.Sprintf("PTAG:%s", id)
 	e = cache.GetLB(key, &ptag)
 	return
@@ -629,7 +644,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 	}
 	cdd := make([]interface{}, 0, 16)
 	cddi := make([]int, 0, 16) //for wmap caching
-	if ptag[refIdx] {
+	if _, exists := ptag[refIdxStr]; exists {
 		logr.Debugf("%s skipping RefIdx[%d]", id, refIdx)
 	} else {
 		fdvs, e := kdjFdFrmCbLoadBal(id, seg)
@@ -642,7 +657,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 		f1 := kdjs[0]
 		for i := 1; i < len(kdjs); i++ {
 			idx := refIdx + i
-			if ptag[idx] {
+			if _, exists := ptag[strconv.Itoa(idx)]; exists {
 				logr.Debugf("%s RefIdx=%d, skipping %d", id, refIdx, idx)
 			} else {
 				f2 := kdjs[i]
@@ -668,16 +683,16 @@ func kdjPruneMapper(row []interface{}) (e error) {
 }
 
 func insertKdjWmap(id string, refIdxStr string, cddi []int) {
-	start := time.Now()
 	cb := cache.Cb()
 	defer cb.Close()
+	if len(cddi) == 0 {
+		cddi = []int{-1}
+	}
 	for t := 0; t < 3; t++ {
 		_, e := cb.MapAdd(fmt.Sprintf("WMAP:%s", id), refIdxStr, cddi, false)
 		if e != nil {
 			logr.Errorf("[id=%s, refIdx=%s] failed to set WMAP \n %+v", id, refIdxStr, e)
 		} else {
-			logr.Errorf("wmap element: %+v %d %.2f",
-				refIdxStr, len(cddi), time.Since(start).Seconds())
 			break
 		}
 	}
