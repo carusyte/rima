@@ -245,11 +245,11 @@ func clearKdjPruneCache(id string, length int) {
 
 // init ptag in cache server
 func initKdjPruneCache(id string, length int) (e error) {
-	e = cacheDoc(fmt.Sprintf("PTAG:%s", id), make([]bool, length))
+	e = cacheDoc(fmt.Sprintf("PTAG:%s", id), map[string]string{"-1": ""})
 	if e != nil {
 		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache PTAG", id, length)
 	}
-	e = cacheDoc(fmt.Sprintf("WMAP:%s", id), map[string][]int{"-1": []int{0, 0, 0}})
+	e = cacheDoc(fmt.Sprintf("WMAP:%s", id), map[string][]int{"-1": []int{0}})
 	if e != nil {
 		return errors.Wrapf(e, "[id=%s, len=%d] failed to cache WMAP", id, length)
 	}
