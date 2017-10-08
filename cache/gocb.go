@@ -12,22 +12,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-var (
-	cbclus *gocb.Cluster
-)
-
-func initCb() {
-	var e error
-	cbclus, e = gocb.Connect(fmt.Sprintf("couchbase://%s", conf.Args.CouchbaseServers))
-	if e != nil {
-		log.Panicln("failed to connect to couchbase cluster.", e)
-	}
-}
-
 // Remember to close the bucket after use.
 func Cb() *gocb.Bucket {
-	if cbclus == nil {
-		initCb()
+	cbclus, e := gocb.Connect(fmt.Sprintf("couchbase://%s", conf.Args.CouchbaseServers))
+	if e != nil {
+		log.Panicln("failed to connect to couchbase cluster.", e)
 	}
 	cbclus.SetEnhancedErrors(true)
 	bucket, e := cbclus.OpenBucket("rima", "")

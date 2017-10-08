@@ -278,6 +278,7 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			logr.Errorf("[id=%s] failed to get wmap \n %+v", id, e)
 			continue
 		}
+		//FIXME probably too many connections to the couchbase server
 		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
 			for _, x := range list {
 				if x < 0 {
