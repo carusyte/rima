@@ -301,21 +301,21 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 				// update ptag
 				mib := cb.MutateIn(fmt.Sprintf("PTAG:%s", id), 0, 0)
 				for _, x := range index {
-					mib = mib.Upsert(strconv.Itoa(x), "", false)
+					mib.Insert(strconv.Itoa(x), "", false)
 				}
 				_, e := mib.Execute()
 				if e != nil {
-					logr.Errorf("[id=%s] failed to update ptag \n %+v", id, e)
+					logr.Errorf("[id=%s] failed to update ptag: %+v \n %+v", id, index, e)
 				}
 			}
 			// trim wmap
 			mib := cb.MutateIn(fmt.Sprintf("WMAP:%s", id), 0, 0)
 			for _, c := range cut {
-				mib = mib.Remove(strconv.Itoa(c))
+				mib.Remove(strconv.Itoa(c))
 			}
 			_, e = mib.Execute()
 			if e != nil {
-				logr.Errorf("[id=%s] failed to trim wmap \n %+v", id, e)
+				logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, cut, e)
 			}
 		}
 	}

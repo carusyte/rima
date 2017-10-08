@@ -29,7 +29,11 @@ func Cb() *gocb.Bucket {
 	if cbclus == nil {
 		initCb()
 	}
+	cbclus.SetEnhancedErrors(true)
 	bucket, e := cbclus.OpenBucket("rima", "")
+	if e != nil {
+		log.Panicln("failed to open couchbase bucket", e)
+	}
 	timeout := time.Second * time.Duration(conf.Args.CouchbaseTimeout)
 	bucket.SetOperationTimeout(timeout)
 	bucket.SetDurabilityTimeout(timeout)
@@ -37,9 +41,6 @@ func Cb() *gocb.Bucket {
 	bucket.SetBulkOperationTimeout(timeout)
 	bucket.SetDurabilityPollTimeout(timeout)
 	bucket.SetN1qlTimeout(timeout)
-	if e != nil {
-		log.Panicln("failed to open couchbase bucket", e)
-	}
 	return bucket
 }
 
