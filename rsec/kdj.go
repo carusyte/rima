@@ -311,7 +311,7 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			for _, c := range cut {
 				_, e = cb.MapRemove(wmapKey, strconv.Itoa(c))
 				if e != nil {
-					logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, cut, e)
+					logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, c, e)
 				}
 			}
 			cb.Close()
