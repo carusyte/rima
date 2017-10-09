@@ -93,7 +93,7 @@ func RemoveElements(key string, paths []string) error {
 	defer b.Close()
 	mib := b.MutateIn(key, 0, 0)
 	for _, p := range paths {
-		mib.Remove(p)
+		mib = mib.Remove(p)
 	}
 	_, err := mib.Execute()
 	return err
@@ -114,7 +114,7 @@ func UpsertElements(key string, elements map[string]interface{}) error {
 	defer b.Close()
 	mib := b.MutateIn(key, 0, 0)
 	for p, v := range elements {
-		mib.Upsert(p, v, false)
+		mib = mib.Upsert(p, v, false)
 	}
 	_, err := mib.Execute()
 	return err
