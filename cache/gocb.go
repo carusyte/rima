@@ -12,21 +12,21 @@ import (
 	"github.com/pkg/errors"
 )
 
-var(
-	bucket *gocb.Bucket
+var (
+	cbclus *gocb.Cluster
 )
 
-// Remember to close the bucket after use.
+// Need to close the bucket after use?
 func Cb() *gocb.Bucket {
-	if bucket != nil{
-		return bucket
+	var e error
+	if cbclus == nil {
+		cbclus, e = gocb.Connect(fmt.Sprintf("couchbase://%s", conf.Args.CouchbaseServers))
+		if e != nil {
+			log.Panicln("failed to connect to couchbase cluster.", e)
+		}
+		cbclus.SetEnhancedErrors(true)
 	}
-	cbclus, e := gocb.Connect(fmt.Sprintf("couchbase://%s", conf.Args.CouchbaseServers))
-	if e != nil {
-		log.Panicln("failed to connect to couchbase cluster.", e)
-	}
-	cbclus.SetEnhancedErrors(true)
-	bucket, e = cbclus.OpenBucket("rima", "")
+	bucket, e := cbclus.OpenBucket("rima", "")
 	if e != nil {
 		log.Panicln("failed to open couchbase bucket", e)
 	}
