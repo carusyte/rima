@@ -282,28 +282,24 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			continue
 		}
 		//FIXME buggy
-		var (
-			wms   []string
-			ptags = make(map[string]interface{})
-		)
+		//var (
+		//	wms   []string
+		//	ptags = make(map[string]interface{})
+		//)
 		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
 			for _, x := range list {
 				if x < 0 {
 					continue
 				}
-				ptags[strconv.Itoa(x)] = ""
+				e = cache.UpsertElement(ptagKey, strconv.Itoa(x), "")
+				if e != nil {
+					logr.Errorf("[id=%s] failed to add %+v ptag \n %+v", id, x, e)
+				}
 			}
-			wms = append(wms, strconv.Itoa(i))
-		}
-		if len(ptags) > 0 {
-			e = cache.UpsertElements(ptagKey, ptags)
+			e = cache.RemoveElement(wmapKey, strconv.Itoa(i))
 			if e != nil {
-				logr.Errorf("[id=%s] failed to add %d ptags \n %+v", id, len(ptags), e)
+				logr.Errorf("[id=%s] failed to remove wmap element: %+v \n %+v", id, i, e)
 			}
-		}
-		e = cache.RemoveElements(wmapKey, wms)
-		if e != nil {
-			logr.Errorf("[id=%s] failed to trim wmap: %+v \n %+v", id, wms, e)
 		}
 	}
 }
