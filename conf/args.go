@@ -10,10 +10,14 @@ import (
 var Args Arguments
 
 type Arguments struct {
-	CouchbaseServers string `mapstructure:"couchbase_servers"`
-	LogLevel         string `mapstructure:"log_level"`
-	Shard            int    `mapstructure:"shard"`
-	CouchbaseTimeout int    `mapstructure:"couchbase_timeout"`
+	LogLevel string `mapstructure:"log_level"`
+	Shard    int    `mapstructure:"shard"`
+	Couchbase struct {
+		Servers        string `mapstructure:"servers"`
+		Bucket         string `mapstructure:"bucket"`
+		Timeout        int    `mapstructure:"timeout"`
+		MutationOpSize int    `mapstructure:"mutation_op_size"`
+	}
 	Kdj struct {
 		CleanInterval time.Duration `mapstructure:"clean_interval"`
 	}
@@ -61,6 +65,7 @@ func init() {
 func setDefaults() {
 	Args.LogLevel = "info"
 	Args.Shard = 20
-	Args.CouchbaseTimeout = 5
+	Args.Couchbase.Timeout = 5
+	Args.Couchbase.MutationOpSize = 16
 	Args.Kdj.CleanInterval = 2
 }

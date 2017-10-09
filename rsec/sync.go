@@ -51,7 +51,7 @@ func (d *DataSync) SyncMap(req *map[string]interface{}, rep *bool) error {
 func cacheKdjFd(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (segNum int, e error) {
 	logrus.Debug("store data in cache server")
 	cb := cache.Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	for k, v := range fdMap {
 		if segSize > 0 && segThold >= segSize && len(v) > segThold {
 			segNum = int(math.Ceil(float64(len(v)) / float64(segSize)))
@@ -74,7 +74,7 @@ func cacheKdjFd(fdMap map[string][]*model.KDJfdView, segSize, segThold int) (seg
 func cacheMap(mp map[string]interface{}) error {
 	logrus.Debug("store data in cache server")
 	cb := cache.Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	for k, v := range mp {
 		_, e := cb.Upsert(k, v, 0)
 		if e != nil {
@@ -87,7 +87,7 @@ func cacheMap(mp map[string]interface{}) error {
 func cacheDoc(key string, doc interface{}) error {
 	logrus.Debug("store data in cache server")
 	cb := cache.Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	_, e := cb.Upsert(key, doc, 0)
 	if e != nil {
 		return errors.Wrapf(e, "failed to store %s to cache server.", key)

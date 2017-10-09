@@ -212,7 +212,7 @@ func passKdjFeatDatPrune(id string, fdvs []*model.KDJfdView, prec float64) (rfdv
 
 func clearKdjPruneCache(id string, length int) {
 	cb := cache.Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	segSize := KDJ_PRUNE_RAW_CACHE_SEG_SIZE
 	segThold := KDJ_PRUNE_RAW_CACHE_SEG_THRESHOLD
 	// clear raw data
@@ -282,25 +282,18 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 			continue
 		}
 		//FIXME buggy
-		//var (
-		//	wms   []string
-		//	ptags = make(map[string]interface{})
-		//)
+		wms := make([]string, 0, 16)
+		ptags := make(map[string]interface{})
 		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
 			for _, x := range list {
-				if x < 0 {
-					continue
-				}
-				e = cache.UpsertElement(ptagKey, strconv.Itoa(x), "")
-				if e != nil {
-					logr.Errorf("[id=%s] failed to add %+v ptag \n %+v", id, x, e)
+				if x >= 0 {
+					ptags[strconv.Itoa(x)] = ""
 				}
 			}
-			e = cache.RemoveElement(wmapKey, strconv.Itoa(i))
-			if e != nil {
-				logr.Errorf("[id=%s] failed to remove wmap element: %+v \n %+v", id, i, e)
-			}
+			wms = append(wms, strconv.Itoa(i))
 		}
+		cache.UpsertElements(ptagKey, ptags, false)
+		cache.RemoveElements(wmapKey, wms, false)
 	}
 }
 
@@ -468,7 +461,7 @@ func getKDJfdViews(cytp model.CYTP, num int) (buy, sell []*model.KDJfdView, e er
 func kdjFdFrmCb(cytp model.CYTP, bysl string, num int) (fdvs []*model.KDJfdView, e error) {
 	mk := kdjFdMapKey(cytp, bysl, num)
 	b := cache.Cb()
-	defer b.Close()
+	//defer b.Close()
 	_, e = b.Get(mk, &fdvs)
 	return
 }
@@ -488,7 +481,7 @@ func kdjWmap(id string) (wmap map[string][]int, e error) {
 func kdjFdFrmCbLoadBal(id string, seg int) (fdvs []*model.KDJfdView, e error) {
 	bg := time.Now()
 	cb := cache.Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	numSrv := strings.Count(conf.Args.CouchbaseServers, ",") + 1
 	for i := 1; i <= int(seg); i++ {
 		sid := id
@@ -555,7 +548,7 @@ func kdjFdFrmDb(cytp model.CYTP, bysl string, num int) ([]*model.KDJfdView, erro
 			return nil, errors.Wrap(e, "failed to query kdj feat dat")
 		}
 	}
-	defer rows.Close()
+	//defer rows.Close()
 	var (
 		fid                string
 		pfid               string
@@ -667,7 +660,7 @@ func kdjPruneMapper(row []interface{}) (e error) {
 
 func insertKdjWmap(id string, refIdxStr string, cddi []int) {
 	cb := cache.Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	if len(cddi) == 0 {
 		cddi = []int{-1}
 	}
