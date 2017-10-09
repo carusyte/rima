@@ -12,14 +12,21 @@ import (
 	"github.com/pkg/errors"
 )
 
+var(
+	bucket *gocb.Bucket
+)
+
 // Remember to close the bucket after use.
 func Cb() *gocb.Bucket {
+	if bucket != nil{
+		return bucket
+	}
 	cbclus, e := gocb.Connect(fmt.Sprintf("couchbase://%s", conf.Args.CouchbaseServers))
 	if e != nil {
 		log.Panicln("failed to connect to couchbase cluster.", e)
 	}
 	cbclus.SetEnhancedErrors(true)
-	bucket, e := cbclus.OpenBucket("rima", "")
+	bucket, e = cbclus.OpenBucket("rima", "")
 	if e != nil {
 		log.Panicln("failed to open couchbase bucket", e)
 	}
@@ -37,7 +44,7 @@ func Cb() *gocb.Bucket {
 func GetLB(key string, value interface{}) (e error) {
 	bg := time.Now()
 	cb := Cb()
-	defer cb.Close()
+	//defer cb.Close()
 	numSrv := strings.Count(conf.Args.CouchbaseServers, ",") + 1
 	switch rand.Intn(numSrv) {
 	case 0:
@@ -78,14 +85,14 @@ func GetLB(key string, value interface{}) (e error) {
 
 func RemoveElement(key, path string) error {
 	b := Cb()
-	defer b.Close()
+	//defer b.Close()
 	_, err := b.MapRemove(key, path)
 	return err
 }
 
 func RemoveElements(key string, paths []string) error {
 	b := Cb()
-	defer b.Close()
+	//defer b.Close()
 	mib := b.MutateIn(key, 0, 0)
 	for _, p := range paths {
 		mib.Remove(p)
@@ -96,7 +103,7 @@ func RemoveElements(key string, paths []string) error {
 
 func UpsertElement(key, path string, value interface{}) error {
 	b := Cb()
-	defer b.Close()
+	//defer b.Close()
 	_, err := b.MutateIn(key, 0, 0).Upsert(path, value, false).Execute()
 	return err
 }
@@ -106,7 +113,7 @@ func UpsertElements(key string, elements map[string]interface{}) error {
 		return nil
 	}
 	b := Cb()
-	defer b.Close()
+	//defer b.Close()
 	mib := b.MutateIn(key, 0, 0)
 	for p, v := range elements {
 		mib.Upsert(p, v, false)
