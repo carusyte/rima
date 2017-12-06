@@ -1,13 +1,13 @@
 package main
 
 import (
-	"testing"
-	"net/rpc"
-	"log"
 	"fmt"
+	"log"
+	"net/rpc"
+	"testing"
 )
 
-const serverAddress = "115.159.237.46:45321"
+const serverAddress = "127.0.0.1:45321"
 
 func TestClient(t *testing.T) {
 	client, err := rpc.DialHTTP("tcp", serverAddress)

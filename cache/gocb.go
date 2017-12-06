@@ -41,6 +41,8 @@ func init() {
 // According to the documentation,
 // https://developer.couchbase.com/documentation/server/4.5/sdk/go/async-programming.html
 // numerous asynchronous goroutines can all perform operations on the same Bucket and Cluster objects
+// Connection usage guide:
+// https://developer.couchbase.com/documentation/server/4.5/sdk/go/managing-connections.html
 func Cb() *gocb.Bucket {
 	return bucket
 }

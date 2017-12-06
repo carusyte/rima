@@ -281,16 +281,17 @@ func cleanKdjFdSamp(id string, length int, ticker *time.Ticker) {
 		if _, exists := wmap[strconv.Itoa(i)]; !exists {
 			continue
 		}
-		//FIXME buggy
+		//FIXME may suffer from concurrent sub-document modification issue
 		wms := make([]string, 0, 16)
 		ptags := make(map[string]interface{})
-		for list, exists := wmap[strconv.Itoa(i)]; exists; i++ {
+		for list, exists := wmap[strconv.Itoa(i)]; exists; list, exists = wmap[strconv.Itoa(i)] {
 			for _, x := range list {
 				if x >= 0 {
 					ptags[strconv.Itoa(x)] = ""
 				}
 			}
 			wms = append(wms, strconv.Itoa(i))
+			i++
 		}
 		cache.UpsertElements(ptagKey, ptags, false)
 		cache.RemoveElements(wmapKey, wms, false)
@@ -337,7 +338,7 @@ func getKdjPruneMapSource(id string, fdvs []*model.KDJfdView, prec float64, seg 
 		r[i][0] = m
 		m["ID"] = id
 		m["Seg"] = seg
-		m["RefIdx"] = i
+		m["RefIdx"] = i  //TODO chunk jobs instead
 		m["Prec"] = prec
 	}
 	return r
