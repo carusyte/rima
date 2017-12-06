@@ -483,7 +483,7 @@ func kdjFdFrmCbLoadBal(id string, seg int) (fdvs []*model.KDJfdView, e error) {
 	bg := time.Now()
 	cb := cache.Cb()
 	//defer cb.Close()
-	numSrv := strings.Count(conf.Args.CouchbaseServers, ",") + 1
+	numSrv := strings.Count(conf.Args.Couchbase.Servers, ",") + 1
 	for i := 1; i <= int(seg); i++ {
 		sid := id
 		if seg > 1 {
